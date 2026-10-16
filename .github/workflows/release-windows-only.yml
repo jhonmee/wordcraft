@@ -1,0 +1,181 @@
+name: Release (solo Windows)
+
+# Copia del flujo de release de storytold/craft-common-actions con solo los jobs de Windows
+# (x64/x86/arm64: MSI + portable zip) y el draft release. Sin firma (fork sin secretos).
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version de prueba, ej. 0.0.0-fork.1 (vacio: Cargo.toml)"
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+env:
+  APP_NAME: wordcraft
+
+jobs:
+  version:
+    timeout-minutes: 10
+    name: version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      date: ${{ steps.v.outputs.date }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: v
+        name: Resolve version
+        uses: storytold/craft-common-actions/actions/resolve-version@main
+        with:
+          input-version: ${{ inputs.version }}
+          app-title: WordCraft
+
+  windows:
+    timeout-minutes: 90
+    name: Windows ${{ matrix.arch }}
+    needs: version
+    runs-on: windows-latest
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x64, target: x86_64-pc-windows-msvc }
+          - { arch: x86, target: i686-pc-windows-msvc }
+          - { arch: arm64, target: aarch64-pc-windows-msvc }
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+      RUST_BACKTRACE: 1
+      VERSION: ${{ needs.version.outputs.version }}
+      BUILD_DATE: ${{ needs.version.outputs.date }}
+      BUILD_SHA: ${{ github.sha }}
+      CADCRAFT_VERSION: ${{ needs.version.outputs.version }}
+      CADCRAFT_BUILD_DATE: ${{ needs.version.outputs.date }}
+      CADCRAFT_BUILD_SHA: ${{ github.sha }}
+      ARTCRAFT_LAUNCHER_VERSION: ${{ needs.version.outputs.version }}
+      ARTCRAFT_LAUNCHER_BUILD_DATE: ${{ needs.version.outputs.date }}
+      ARTCRAFT_LAUNCHER_BUILD_SHA: ${{ github.sha }}
+      DECKCRAFT_VERSION: ${{ needs.version.outputs.version }}
+      DECKCRAFT_BUILD_DATE: ${{ needs.version.outputs.date }}
+      DECKCRAFT_BUILD_SHA: ${{ github.sha }}
+      DESIGNCRAFT_VERSION: ${{ needs.version.outputs.version }}
+      DESIGNCRAFT_BUILD_DATE: ${{ needs.version.outputs.date }}
+      DESIGNCRAFT_BUILD_SHA: ${{ github.sha }}
+      EFFECTCRAFT_VERSION: ${{ needs.version.outputs.version }}
+      EFFECTCRAFT_BUILD_DATE: ${{ needs.version.outputs.date }}
+      EFFECTCRAFT_BUILD_SHA: ${{ github.sha }}
+      FILMCRAFT_VERSION: ${{ needs.version.outputs.version }}
+      FILMCRAFT_BUILD_DATE: ${{ needs.version.outputs.date }}
+      FILMCRAFT_BUILD_SHA: ${{ github.sha }}
+      GRIDCRAFT_VERSION: ${{ needs.version.outputs.version }}
+      GRIDCRAFT_BUILD_DATE: ${{ needs.version.outputs.date }}
+      GRIDCRAFT_BUILD_SHA: ${{ github.sha }}
+      LIGHTCRAFT_VERSION: ${{ needs.version.outputs.version }}
+      LIGHTCRAFT_BUILD_DATE: ${{ needs.version.outputs.date }}
+      LIGHTCRAFT_BUILD_SHA: ${{ github.sha }}
+      PDFCRAFT_VERSION: ${{ needs.version.outputs.version }}
+      PDFCRAFT_BUILD_DATE: ${{ needs.version.outputs.date }}
+      PDFCRAFT_BUILD_SHA: ${{ github.sha }}
+      PHOTOCRAFT_VERSION: ${{ needs.version.outputs.version }}
+      PHOTOCRAFT_BUILD_DATE: ${{ needs.version.outputs.date }}
+      PHOTOCRAFT_BUILD_SHA: ${{ github.sha }}
+      SOUNDCRAFT_VERSION: ${{ needs.version.outputs.version }}
+      SOUNDCRAFT_BUILD_DATE: ${{ needs.version.outputs.date }}
+      SOUNDCRAFT_BUILD_SHA: ${{ github.sha }}
+      VECTORCRAFT_VERSION: ${{ needs.version.outputs.version }}
+      VECTORCRAFT_BUILD_DATE: ${{ needs.version.outputs.date }}
+      VECTORCRAFT_BUILD_SHA: ${{ github.sha }}
+      WORDCRAFT_VERSION: ${{ needs.version.outputs.version }}
+      WORDCRAFT_BUILD_DATE: ${{ needs.version.outputs.date }}
+      WORDCRAFT_BUILD_SHA: ${{ github.sha }}
+      FIGCRAFT_VERSION: ${{ needs.version.outputs.version }}
+      FIGCRAFT_BUILD_DATE: ${{ needs.version.outputs.date }}
+      FIGCRAFT_BUILD_SHA: ${{ github.sha }}
+      INPUT_VERSION: ${{ inputs.version }}
+    steps:
+      # See the macOS job: unlisted secrets are empty, and the build would ship unsigned.
+      # Signing needs either the PFX pair or all six Azure Trusted Signing values.
+      - name: Require signing secrets on the release branch
+        if: github.ref == 'refs/heads/release'
+        shell: bash
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          AZURE_CERT_PROFILE: ${{ secrets.AZURE_CERT_PROFILE }}
+        run: |
+          if [ -n "$WINDOWS_CERTIFICATE" ] && [ -n "$WINDOWS_CERTIFICATE_PASSWORD" ]; then exit 0; fi
+          missing=""
+          for name in AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_SIGNING_ENDPOINT AZURE_SIGNING_ACCOUNT AZURE_CERT_PROFILE; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Windows release builds must be signed, but there is no WINDOWS_CERTIFICATE pair and these Azure Trusted Signing secrets are empty:$missing. List them in the caller's secrets: block and set them in the repo's release environment."
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out craft-fonts
+        if: false
+        uses: storytold/craft-common-actions/actions/checkout-craft-fonts@main
+        with:
+          ref: 
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: release-windows-${{ matrix.arch }}
+      - name: Apply version override
+        if: inputs.version != ''
+        shell: bash
+        run: cargo xtask version set "$VERSION"
+      - name: Install WiX
+        uses: storytold/craft-common-actions/actions/install-wix@main
+        with:
+          wix-version: 5.0.2
+      - name: Build, sign, package
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          AZURE_CERT_PROFILE: ${{ secrets.AZURE_CERT_PROFILE }}
+          CRAFT_FONTS_DIR: ${{ github.workspace }}/craft-fonts
+          CRAFT_FONTS_REQUIRED: "0"
+        run: ./packaging/windows/package.ps1 -Arch ${{ matrix.arch }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-windows-${{ matrix.arch }}
+          path: dist/release/*
+          if-no-files-found: error
+
+  release:
+    timeout-minutes: 10
+    name: Draft GitHub Release
+    if: "!cancelled() && !contains(needs.*.result, 'failure')"
+    needs: [version, windows]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: storytold/craft-common-actions/actions/draft-release@main
+        with:
+          version: ${{ needs.version.outputs.version }}
+          app-title: WordCraft
+          prerelease: ${{ needs.version.outputs.prerelease }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
