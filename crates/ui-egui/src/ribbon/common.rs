@@ -106,6 +106,52 @@ pub(super) fn mi_icon(ui: &mut Ui, app: &mut WordApp, icon: &str, label: &str, i
     }
 }
 
+/// A menu entry with a picture of what it does (`icon`, drawn [`crate::menu_visuals::PICTURE`]
+/// points big) before its label, checked when `checked` is `Some(true)`, as Word's picture menus
+/// (Margins, Columns, Wrap Text…) show them.
+pub(super) fn mi_pic(ui: &mut Ui, app: &mut WordApp, icon: &str, label: &str, checked: Option<bool>, id: &str, params: Value) {
+    mi_pic_text(ui, app, icon, tl!(label), checked, id, params);
+}
+
+/// [`mi_pic`] whose label is already in the interface language.
+pub(super) fn mi_pic_text(ui: &mut Ui, app: &mut WordApp, icon: &str, label: &str, checked: Option<bool>, id: &str, params: Value) {
+    let sc = crate::widgets::shortcut_text(app, id);
+    let enabled = crate::widgets::enabled(app, id);
+    let resp = ui.add_enabled_ui(enabled, |ui| crate::menu_visuals::picture_item(ui, icon, label, checked, crate::menu_visuals::PICTURE, &sc)).inner;
+    if resp.clicked() {
+        crate::widgets::run_from_ribbon(app, id, params);
+        ui.close();
+    }
+}
+
+/// A menu entry drawn as a line `width` points thick before its label (Weight, Thickness,
+/// Picture Border), checked when `checked`.
+pub(super) fn mi_line(ui: &mut Ui, app: &mut WordApp, width: f32, label: &str, checked: bool, id: &str, params: Value) {
+    let enabled = crate::widgets::enabled(app, id);
+    let resp = ui.add_enabled_ui(enabled, |ui| crate::menu_visuals::line_item(ui, width, label, checked)).inner;
+    if resp.clicked() {
+        crate::widgets::run_from_ribbon(app, id, params);
+        ui.close();
+    }
+}
+
+/// Gallery tiles in rows of `per_row`, each drawn by `tile` from its item; `tile` returns
+/// whether its tile was clicked, which closes the menu.
+pub(super) fn tile_rows<T>(ui: &mut Ui, items: &[T], per_row: usize, mut tile: impl FnMut(&mut Ui, &T) -> bool) {
+    ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
+    let mut close = false;
+    for row in items.chunks(per_row.max(1)) {
+        ui.horizontal(|ui| {
+            for item in row {
+                close |= tile(ui, item);
+            }
+        });
+    }
+    if close {
+        ui.close();
+    }
+}
+
 /// A menu item whose text is already in the interface language.
 pub(super) fn mi_text(ui: &mut Ui, app: &mut WordApp, text: &str, id: &str, params: Value) {
     let sc = crate::widgets::shortcut_text(app, id);

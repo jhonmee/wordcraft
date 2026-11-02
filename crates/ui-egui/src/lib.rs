@@ -53,6 +53,7 @@ pub mod ink;
 pub mod keys;
 pub mod keytips;
 mod local_time;
+pub mod menu_visuals;
 pub mod mini_toolbar;
 pub mod objects;
 pub mod options;

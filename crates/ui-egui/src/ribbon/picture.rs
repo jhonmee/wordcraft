@@ -1,5 +1,5 @@
 use super::arrange::{align_menu, group_menu, rotate_menu, rotation_field, wrap_menu};
-use super::common::{esc_cancelled, mi, stack};
+use super::common::{esc_cancelled, mi, mi_line, stack, tile_rows};
 use super::shape::alt_text_group;
 use super::{MeasureExt, Target, Ui, WordApp, big, group, json, menu_button, small};
 
@@ -90,17 +90,7 @@ pub(super) fn picture_format(app: &mut WordApp, ui: &mut Ui) {
             ui,
             app,
             crate::widgets::MenuButtonOptions::new("picture", Some("Styles"), "Frames and effects", true, "picture.style"),
-            |ui, app| {
-                for (l, s) in [
-                    ("Simple Frame", "simpleFrame"),
-                    ("Thick Frame", "thickFrame"),
-                    ("Rounded", "rounded"),
-                    ("Soft Edge", "softEdge"),
-                    ("Shadow", "shadow"),
-                ] {
-                    mi(ui, app, l, "picture.style", json!({"style": s}));
-                }
-            },
+            picture_styles_gallery,
         );
         menu_button(
             ui,
@@ -108,7 +98,7 @@ pub(super) fn picture_format(app: &mut WordApp, ui: &mut Ui) {
             crate::widgets::MenuButtonOptions::new("picture", Some("Border"), "Picture border", true, "picture.border"),
             |ui, app| {
                 for (l, w) in [("Thin", 2), ("Medium", 4), ("Thick", 8)] {
-                    mi(ui, app, l, "picture.border", json!({"width": w}));
+                    mi_line(ui, app, w as f32, tl!(l), false, "picture.border", json!({"width": w}));
                 }
             },
         );
@@ -209,5 +199,25 @@ pub(super) fn picture_format(app: &mut WordApp, ui: &mut Ui) {
                 }
             });
         });
+    });
+}
+
+/// Picture Format › Picture Styles: a tile per frame or effect, drawn on a small landscape.
+fn picture_styles_gallery(ui: &mut Ui, app: &mut WordApp) {
+    const STYLES: [(&str, &str); 5] =
+        [("Simple Frame", "simpleFrame"), ("Thick Frame", "thickFrame"), ("Rounded", "rounded"), ("Soft Edge", "softEdge"), ("Shadow", "shadow")];
+    let enabled = crate::widgets::enabled(app, "picture.style");
+    tile_rows(ui, &STYLES, 5, |ui, (label, style)| {
+        let name = tl!(label);
+        let resp = ui
+            .add_enabled_ui(enabled, |ui| {
+                crate::menu_visuals::tile(ui, egui::vec2(64.0, 52.0), name, false, |ui, r, _| crate::menu_visuals::paint_picture_style(ui, r, style))
+            })
+            .inner;
+        let clicked = resp.clicked();
+        if clicked {
+            crate::widgets::run_from_ribbon(app, "picture.style", json!({"style": style}));
+        }
+        clicked
     });
 }

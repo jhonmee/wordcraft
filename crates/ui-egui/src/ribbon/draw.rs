@@ -1,5 +1,4 @@
-use super::common::{mi, stack};
-use super::language::mi_check;
+use super::common::{mi_line, mi_pic, stack};
 use super::{CONTENT_H, Rect, Sense, Stroke, Target, Tokens, Ui, WordApp, big, big_toggle, group, icons, json, menu_button, pos2, split, vec2};
 
 pub(super) fn draw(app: &mut WordApp, ui: &mut Ui) {
@@ -26,10 +25,12 @@ pub(super) fn draw(app: &mut WordApp, ui: &mut Ui) {
             gallery_pen(ui, app, i, *pen, custom == Some(i));
         }
         menu_button(ui, app, crate::widgets::MenuButtonOptions::new("addPen", Some("Add\nPen"), "Add Pen", true, ""), |ui, app| {
-            for (label, kind) in [("Pen", InkTool::Pen), ("Pencil", InkTool::Pencil), ("Highlighter", InkTool::Highlighter)] {
+            for (label, kind, icon) in
+                [("Pen", InkTool::Pen, "pen"), ("Pencil", InkTool::Pencil, "pencil"), ("Highlighter", InkTool::Highlighter, "highlight")]
+            {
                 // A new pen starts as that kind's current colour and thickness.
                 let cur = app.session.view.draw.settings(kind);
-                mi(ui, app, label, "draw.addPen", json!({"kind": kind.name(), "color": cur.color.hex(), "width": cur.width}));
+                mi_pic(ui, app, icon, label, None, "draw.addPen", json!({"kind": kind.name(), "color": cur.color.hex(), "width": cur.width}));
             }
         });
         stack(ui, |ui| {
@@ -47,7 +48,7 @@ pub(super) fn draw(app: &mut WordApp, ui: &mut Ui) {
                 let widths: &[f32] = if tool == InkTool::Highlighter { &[4.0, 8.0, 12.0, 18.0, 24.0] } else { &[0.5, 1.0, 1.5, 2.5, 3.5, 5.0] };
                 for w in widths {
                     let label = crate::i18n::fmt(tl!("{n} pt"), &[("n", &w.to_string())]);
-                    mi_check(ui, app, &label, (set.width - w).abs() < 0.01, pen_command(tool), json!({"width": w}));
+                    mi_line(ui, app, *w, &label, (set.width - w).abs() < 0.01, pen_command(tool), json!({"width": w}));
                 }
                 update_gallery_pen(app, custom, tool);
             });

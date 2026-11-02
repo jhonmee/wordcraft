@@ -314,6 +314,23 @@ impl Previews {
     }
 }
 
+/// Menus that show fonts in their own faces (Design › Fonts and Themes) render their samples
+/// here, cached with the other previews: the face documents get for the family (the installed
+/// font or its open substitute), as an ink mask to tint with the interface's text colour.
+impl crate::menu_visuals::FontSamples for Previews {
+    fn font_sample(&mut self, ctx: &egui::Context, family: &str, text: &str, pt: f32, w: f32, h: f32) -> Option<TextureHandle> {
+        let ppp = ctx.pixels_per_point();
+        let key = format!("menu-font:{family}\u{1}{text}\u{1}{pt}\u{1}{w}\u{1}{h}\u{1}{ppp}");
+        self.get_or(ctx, &key, || {
+            let face = wordcraft_fonts::word::resolve(family, false, false).face;
+            let img = wordcraft_render::render_text_line(&face, text, pt, w, h, 0.0, ppp);
+            let mut img = egui::ColorImage::from_rgba_unmultiplied([img.width as usize, img.height as usize], &img.to_straight());
+            ink_mask(&mut img);
+            Some(img)
+        })
+    }
+}
+
 /// An equation rasterised for a gallery tile or a button (`pt`: font size; `size`: the tile in
 /// points), with its empty slots shown: the shared texture and the picture's UV rectangle in it
 /// ([`MathAtlas`]). An ink mask, drawn tinted with the theme's text colour. `None` while waiting

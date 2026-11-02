@@ -2,31 +2,40 @@ use super::arrange::group_menu_command;
 use super::*;
 use wordcraft_engine::Session;
 
-/// #4349: Insert › Shapes offers the basic shapes as a grid of drawn tiles, each named for
-/// screen readers and by its tooltip; a click inserts that shape.
+/// #4349: Insert › Shapes offers every shape WordCraft draws as a grid of drawn tiles, grouped
+/// by category as Word groups them (Lines with the connectors, Rectangles, Basic Shapes, Block
+/// Arrows, Flowchart, Stars and Banners), each named for screen readers and by its tooltip; a
+/// click inserts that shape, with its arrowheads for an arrow connector.
 #[test]
 fn the_shapes_menu_offers_its_basic_shapes_as_a_grid_of_tiles() {
     use egui_kittest::kittest::Queryable;
     let app = WordApp::new(Session::new(wordcraft_doc::Document::from_text("Lanterns")), crate::Services::default());
     let mut h = egui_kittest::Harness::builder()
-        .with_size(vec2(400.0, 300.0))
+        .with_size(vec2(400.0, 500.0))
         .build_ui_state(|ui, app: &mut WordApp| super::insert::shape_gallery(ui, app), app);
     h.run_steps(2);
-    let rects: Vec<Rect> = super::insert::SHAPE_TILES.iter().map(|(label, _)| h.get_by_label(label).rect()).collect();
+    let tiles: Vec<&super::insert::ShapeTile> = super::insert::SHAPE_CATEGORIES.iter().flat_map(|(_, t)| t.iter()).collect();
+    for (category, _) in super::insert::SHAPE_CATEGORIES {
+        assert!(h.query_by_label(category).is_some(), "{category} heads its shapes");
+    }
+    let rects: Vec<Rect> = tiles.iter().map(|t| h.get_by_label(t.label).rect()).collect();
     // A grid, not a list: tiles sit side by side, wrapping into rows.
     assert_eq!(rects[0].top(), rects[1].top(), "the first two shapes share a row");
     assert!(rects[0].right() <= rects[1].left(), "side by side");
     let rows = rects.iter().map(|r| r.top().round() as i32).collect::<std::collections::BTreeSet<_>>().len();
-    assert!(rows >= 2 && rows < super::insert::SHAPE_TILES.len(), "{rows} rows for {} shapes", super::insert::SHAPE_TILES.len());
+    assert!(rows >= super::insert::SHAPE_CATEGORIES.len() && rows < tiles.len(), "{rows} rows for {} shapes", tiles.len());
     assert!(rects.iter().all(|r| r.width() >= 24.0 && r.height() >= 24.0), "tiles are big enough to read and hit");
     // Every tile inserts its own shape.
-    for (label, kind) in super::insert::SHAPE_TILES {
+    for tile in &tiles {
         let before = h.state().session.undo_depth();
-        h.get_by_label(label).click();
+        h.get_by_label(tile.label).click();
         h.run_steps(2);
-        assert_eq!(h.state().session.undo_depth(), before + 1, "{label} inserts a shape");
+        assert_eq!(h.state().session.undo_depth(), before + 1, "{} inserts a shape", tile.label);
         let doc = serde_json::to_string(&h.state().session.doc).unwrap();
-        assert!(doc.contains(&format!("\"{kind}\"")), "{label} inserts a {kind}");
+        assert!(doc.contains(&format!("\"{}\"", tile.kind)), "{} inserts a {}", tile.label, tile.kind);
+        if tile.arrow == Some("end") {
+            assert!(doc.contains("\"arrowEnd\":true") || doc.contains("\"arrow_end\":true"), "{} has its arrowhead", tile.label);
+        }
         assert!(h.state_mut().session.undo());
     }
 }

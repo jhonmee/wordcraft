@@ -1,6 +1,5 @@
 use super::arrange::{align_menu, group_menu, rotate_menu, wrap_menu};
-use super::common::{mi, size_menu, stack};
-use super::language::mi_check;
+use super::common::{mi, mi_pic, size_menu, stack};
 use super::{MeasureExt, Ui, WordApp, big, group, json, menu_button, small, vec2};
 
 // Layout › Margins, Orientation, Size and Columns: the caret section's setting has a check
@@ -22,15 +21,15 @@ pub(super) fn margins_items(ui: &mut Ui, app: &mut WordApp) {
         };
         // Mirrored margins come from the document as well as from the preset (#1181).
         let on = current == Some(k) || (k == "mirrored" && app.session.doc.settings.mirror_margins);
-        mi_check(ui, app, &label, on, "layout.margins", json!({"preset": k}));
+        mi_pic(ui, app, &format!("menu.margins.{k}"), &label, Some(on), "layout.margins", json!({"preset": k}));
     }
     mi(ui, app, "Custom Margins…", "ui.dialog", json!({"name": "pageSetup"}));
 }
 
 pub(super) fn orientation_items(ui: &mut Ui, app: &mut WordApp) {
     let land = wordcraft_engine::cmd::page::sect(&app.session).landscape;
-    mi_check(ui, app, "Portrait", !land, "layout.orientation", json!({"value": "portrait"}));
-    mi_check(ui, app, "Landscape", land, "layout.orientation", json!({"value": "landscape"}));
+    mi_pic(ui, app, "menu.orientation.portrait", "Portrait", Some(!land), "layout.orientation", json!({"value": "portrait"}));
+    mi_pic(ui, app, "menu.orientation.landscape", "Landscape", Some(land), "layout.orientation", json!({"value": "landscape"}));
 }
 
 pub(super) fn columns_items(ui: &mut Ui, app: &mut WordApp) {
@@ -42,7 +41,7 @@ pub(super) fn columns_items(ui: &mut Ui, app: &mut WordApp) {
         ("Left", "left", json!({"preset": "left"})),
         ("Right", "right", json!({"preset": "right"})),
     ] {
-        mi_check(ui, app, l, current == Some(k), "layout.columns", params);
+        mi_pic(ui, app, &format!("menu.columns.{k}"), l, Some(current == Some(k)), "layout.columns", params);
     }
     ui.separator();
     mi(ui, app, "More Columns…", "ui.dialog", json!({"name": "columns"}));
@@ -58,12 +57,12 @@ pub(super) fn layout(app: &mut WordApp, ui: &mut Ui) {
             crate::widgets::MenuButtonOptions::new("textDirection", Some("Text\nDirection"), "Text Direction", true, "layout.textDirection"),
             |ui, app| {
                 use wordcraft_doc::props::TextDirection;
-                for (label, d) in [
-                    ("Horizontal", TextDirection::Horizontal),
-                    ("Rotate all text 90°", TextDirection::Down),
-                    ("Rotate all text 270°", TextDirection::Up),
+                for (label, d, icon) in [
+                    ("Horizontal", TextDirection::Horizontal, "menu.textDirection.horizontal"),
+                    ("Rotate all text 90°", TextDirection::Down, "menu.textDirection.down"),
+                    ("Rotate all text 270°", TextDirection::Up, "menu.textDirection.up"),
                 ] {
-                    mi_check(ui, app, label, dir == d, "layout.textDirection", json!({"value": d.ooxml()}));
+                    mi_pic(ui, app, icon, label, Some(dir == d), "layout.textDirection", json!({"value": d.ooxml()}));
                 }
             },
         );
@@ -79,14 +78,13 @@ pub(super) fn layout(app: &mut WordApp, ui: &mut Ui) {
         stack(ui, |ui| {
             menu_button(ui, app, crate::widgets::MenuButtonOptions::new("breaks", Some("Breaks"), "Breaks", false, "layout.break"), |ui, app| {
                 ui.label(egui::RichText::new(tl!("Page Breaks")).strong());
-                mi(ui, app, "Page", "layout.break", json!({"kind": "page"}));
-                mi(ui, app, "Column", "layout.break", json!({"kind": "column"}));
-                mi(ui, app, "Text Wrapping", "layout.break", json!({"kind": "textWrapping"}));
+                for (l, k) in [("Page", "page"), ("Column", "column"), ("Text Wrapping", "textWrapping")] {
+                    mi_pic(ui, app, &format!("menu.break.{k}"), l, None, "layout.break", json!({"kind": k}));
+                }
                 ui.label(egui::RichText::new(tl!("Section Breaks")).strong());
-                mi(ui, app, "Next Page", "layout.break", json!({"kind": "nextPage"}));
-                mi(ui, app, "Continuous", "layout.break", json!({"kind": "continuous"}));
-                mi(ui, app, "Even Page", "layout.break", json!({"kind": "evenPage"}));
-                mi(ui, app, "Odd Page", "layout.break", json!({"kind": "oddPage"}));
+                for (l, k) in [("Next Page", "nextPage"), ("Continuous", "continuous"), ("Even Page", "evenPage"), ("Odd Page", "oddPage")] {
+                    mi_pic(ui, app, &format!("menu.break.{k}"), l, None, "layout.break", json!({"kind": k}));
+                }
             });
             menu_button(
                 ui,
@@ -99,7 +97,7 @@ pub(super) fn layout(app: &mut WordApp, ui: &mut Ui) {
                         ("Restart Each Page", "restartPage"),
                         ("Restart Each Section", "restartSection"),
                     ] {
-                        mi(ui, app, l, "layout.lineNumbers", json!({"value": v}));
+                        mi_pic(ui, app, &format!("menu.lineNumbers.{v}"), l, None, "layout.lineNumbers", json!({"value": v}));
                     }
                     ui.separator();
                     mi(ui, app, "Line Numbering Options…", "ui.dialog", json!({"name": "lineNumbers"}));

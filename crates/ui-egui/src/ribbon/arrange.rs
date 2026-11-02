@@ -1,4 +1,4 @@
-use super::common::mi;
+use super::common::{mi, mi_pic};
 use super::language::mi_check;
 use super::{Ui, WordApp, json, menu_button};
 
@@ -24,7 +24,7 @@ pub(crate) fn wrap_text_items(ui: &mut Ui, app: &mut WordApp) {
     let state = selected(&app.session).and_then(|(_, o)| o.frame().map(|(_, _, f)| (f.wrap, moves_with_text(f))));
     let wrap = state.map(|(w, _)| w);
     for (label, w, v) in WRAP_STYLES {
-        mi_check(ui, app, label, wrap == Some(w), "arrange.wrap", json!({"wrap": v}));
+        mi_pic(ui, app, &format!("menu.wrap.{v}"), label, Some(wrap == Some(w)), "arrange.wrap", json!({"wrap": v}));
     }
     ui.separator();
     // An inline object is neither: it's part of the text.
@@ -41,17 +41,9 @@ pub(super) fn wrap_menu(ui: &mut Ui, app: &mut WordApp) {
         .and_then(|(_, o)| o.frame().map(|(_, _, f)| (f.wrap, f.wrap_text)))
         .unwrap_or_default();
     menu_button(ui, app, crate::widgets::MenuButtonOptions::new("wrapText", Some("Wrap\nText"), "Wrap Text", true, "arrange.wrapText"), |ui, app| {
-        use wordcraft_doc::para::{Wrap, WrapText};
-        for (l, w, v) in [
-            ("In Line with Text", Wrap::Inline, "inline"),
-            ("Square", Wrap::Square, "square"),
-            ("Tight", Wrap::Tight, "tight"),
-            ("Through", Wrap::Through, "through"),
-            ("Top and Bottom", Wrap::TopAndBottom, "topAndBottom"),
-            ("Behind Text", Wrap::BehindText, "behindText"),
-            ("In Front of Text", Wrap::InFrontOfText, "inFrontOfText"),
-        ] {
-            mi_check(ui, app, l, wrap == w, "arrange.wrap", json!({"wrap": v}));
+        use wordcraft_doc::para::WrapText;
+        for (l, w, v) in WRAP_STYLES {
+            mi_pic(ui, app, &format!("menu.wrap.{v}"), l, Some(wrap == w), "arrange.wrap", json!({"wrap": v}));
         }
         ui.separator();
         ui.menu_button(tl!("Wrap Text Sides"), |ui| {
@@ -69,10 +61,11 @@ pub(super) fn wrap_menu(ui: &mut Ui, app: &mut WordApp) {
 
 pub(super) fn rotate_menu(ui: &mut Ui, app: &mut WordApp, label: Option<&str>) {
     menu_button(ui, app, crate::widgets::MenuButtonOptions::new("rotate", label, "Rotate", false, "arrange.rotate"), |ui, app| {
-        mi(ui, app, "Rotate Right 90°", "arrange.rotate", json!({"direction": "right"}));
-        mi(ui, app, "Rotate Left 90°", "arrange.rotate", json!({"direction": "left"}));
-        mi(ui, app, "Flip Vertical", "arrange.rotate", json!({"direction": "flipVertical"}));
-        mi(ui, app, "Flip Horizontal", "arrange.rotate", json!({"direction": "flipHorizontal"}));
+        for (l, d) in
+            [("Rotate Right 90°", "right"), ("Rotate Left 90°", "left"), ("Flip Vertical", "flipVertical"), ("Flip Horizontal", "flipHorizontal")]
+        {
+            mi_pic(ui, app, &format!("menu.rotate.{d}"), l, None, "arrange.rotate", json!({"direction": d}));
+        }
     });
 }
 
@@ -109,8 +102,8 @@ pub(super) fn group_menu(ui: &mut Ui, app: &mut WordApp, label: Option<&str>) {
 /// `arrange.align` with no `value`, which always centers; a menu reaches Left and Right too).
 pub(super) fn align_menu(ui: &mut Ui, app: &mut WordApp, label: Option<&str>) {
     menu_button(ui, app, crate::widgets::MenuButtonOptions::new("align", label, "Align", false, "arrange.align"), |ui, app| {
-        mi(ui, app, "Align Left", "arrange.align", json!({"value": "left"}));
-        mi(ui, app, "Align Center", "arrange.align", json!({"value": "center"}));
-        mi(ui, app, "Align Right", "arrange.align", json!({"value": "right"}));
+        for (l, v) in [("Align Left", "left"), ("Align Center", "center"), ("Align Right", "right")] {
+            mi_pic(ui, app, &format!("menu.align.{v}"), l, None, "arrange.align", json!({"value": v}));
+        }
     });
 }

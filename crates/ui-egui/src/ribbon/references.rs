@@ -1,4 +1,4 @@
-use super::common::{mi, mi_text, stack};
+use super::common::{mi, mi_pic, mi_text, stack};
 use super::language::mi_check;
 use super::{Ui, WordApp, big, group, json, menu_button, small};
 
@@ -9,8 +9,9 @@ pub(super) fn references(app: &mut WordApp, ui: &mut Ui) {
             app,
             crate::widgets::MenuButtonOptions::new("toc", Some("Table of\nContents"), "Table of Contents", true, "references.toc"),
             |ui, app| {
-                mi(ui, app, "Automatic Table 1 (3 levels)", "references.toc", json!({"levels": 3}));
-                mi(ui, app, "Automatic Table 2 (2 levels)", "references.toc", json!({"levels": 2, "title": "Table of Contents"}));
+                mi_pic(ui, app, "menu.toc.3", "Automatic Table 1 (3 levels)", None, "references.toc", json!({"levels": 3}));
+                let params = json!({"levels": 2, "title": "Table of Contents"});
+                mi_pic(ui, app, "menu.toc.2", "Automatic Table 2 (2 levels)", None, "references.toc", params);
                 ui.separator();
                 mi(ui, app, "Custom Table of Contents…", "ui.dialog", json!({"name": "toc"}));
                 mi(ui, app, "Remove Table of Contents", "references.removeToc", json!({}));

@@ -73,6 +73,11 @@ impl Pen<'_> {
 
 /// Paint icon `name` into `r`. `c` is the line colour; the accent comes from the theme.
 pub fn paint(p: &Painter, r: Rect, name: &str, c: Color32, accent: Color32) {
+    if let Some(menu) = name.strip_prefix("menu.")
+        && crate::menu_visuals::glyphs::paint(p, r, menu, c, accent)
+    {
+        return;
+    }
     let pen = Pen { p, r, c, a: accent, w: 1.25 };
     if let Some(kind) = name.strip_prefix("shape.")
         && shape(&pen, kind)
@@ -1641,6 +1646,29 @@ fn shape(pen: &Pen, kind: &str) -> bool {
         "elbowArrowConnector" => ends(&[(4.0, 15.0), (10.0, 15.0), (10.0, 5.0), (16.0, 5.0)], true),
         "curvedConnector" => ends(&curve(), false),
         "curvedArrowConnector" => ends(&curve(), true),
+        "rightTriangle" => solid(&[(4.0, 3.5), (16.5, 16.5), (4.0, 16.5)]),
+        "flowchartOr" => {
+            let (center, radius) = (pen.pt(10.0, 10.0), 7.0 * pen.s());
+            pen.p.circle_filled(center, radius, tint);
+            pen.p.circle_stroke(center, radius, pen.stroke(c));
+            pen.line(&[(3.0, 10.0), (17.0, 10.0)]);
+            pen.line(&[(10.0, 3.0), (10.0, 17.0)]);
+        }
+        // Block arrows: a shaft and a head, drawn pointing right and turned.
+        "blockArrowRight" | "arrowLeft" | "arrowUp" | "arrowDown" => {
+            let turn = |(x, y): (f32, f32)| match kind {
+                "arrowLeft" => (20.0 - x, y),
+                "arrowDown" => (20.0 - y, x),
+                "arrowUp" => (y, 20.0 - x),
+                _ => (x, y),
+            };
+            let shaft = [(3.0, 7.5), (11.0, 7.5), (11.0, 12.5), (3.0, 12.5)].map(turn);
+            let head = [(11.0, 4.0), (17.0, 10.0), (11.0, 16.0)].map(turn);
+            pen.fill(&shaft, tint);
+            pen.fill(&head, tint);
+            let outline = [(3.0, 7.5), (11.0, 7.5), (11.0, 4.0), (17.0, 10.0), (11.0, 16.0), (11.0, 12.5), (3.0, 12.5)].map(turn);
+            pen.closed(&outline, c);
+        }
         _ => return false,
     }
     true

@@ -1,24 +1,67 @@
-use super::common::{mi, mi_icon, stack};
+use super::common::{mi, mi_icon, mi_pic, stack};
 use super::language::mi_check;
 use super::{Ui, WordApp, big, group, json, menu_button, small};
 
-/// The basic shapes of Insert › Shapes: tooltip and `insert.shape` kind.
-pub(super) const SHAPE_TILES: [(&str, &str); 9] = [
-    ("Rectangle", "rectangle"),
-    ("Rounded Rectangle", "roundedRectangle"),
-    ("Oval", "ellipse"),
-    ("Triangle", "triangle"),
-    ("Diamond", "diamond"),
-    ("Line", "line"),
-    ("Arrow", "arrow"),
-    ("Star", "star"),
-    ("Heart", "heart"),
+/// A tile of Insert › Shapes: its name (tooltip, assistive technology), the `insert.shape`
+/// kind, the picture drawn on it and, for lines and connectors, the arrowheads.
+pub(super) struct ShapeTile {
+    pub label: &'static str,
+    pub kind: &'static str,
+    pub icon: &'static str,
+    pub arrow: Option<&'static str>,
+}
+
+const fn tile(label: &'static str, kind: &'static str, icon: &'static str) -> ShapeTile {
+    ShapeTile { label, kind, icon, arrow: None }
+}
+
+const fn line(label: &'static str, kind: &'static str, icon: &'static str, arrow: &'static str) -> ShapeTile {
+    ShapeTile { label, kind, icon, arrow: Some(arrow) }
+}
+
+/// Insert › Shapes, by category as Word groups them: every shape WordCraft draws.
+pub(super) const SHAPE_CATEGORIES: [(&str, &[ShapeTile]); 6] = [
+    (
+        "Lines",
+        &[
+            tile("Line", "line", "shape.line"),
+            line("Straight Connector", "straightConnector", "shape.straightConnector", "none"),
+            line("Straight Arrow Connector", "straightConnector", "shape.straightArrowConnector", "end"),
+            line("Elbow Connector", "elbowConnector", "shape.elbowConnector", "none"),
+            line("Elbow Arrow Connector", "elbowConnector", "shape.elbowArrowConnector", "end"),
+            line("Curved Connector", "curvedConnector", "shape.curvedConnector", "none"),
+            line("Curved Arrow Connector", "curvedConnector", "shape.curvedArrowConnector", "end"),
+        ],
+    ),
+    ("Rectangles", &[tile("Rectangle", "rectangle", "shape.rectangle"), tile("Rounded Rectangle", "roundedRectangle", "shape.roundedRectangle")]),
+    (
+        "Basic Shapes",
+        &[
+            tile("Oval", "ellipse", "shape.ellipse"),
+            tile("Triangle", "triangle", "shape.triangle"),
+            tile("Right Triangle", "rightTriangle", "shape.rightTriangle"),
+            tile("Diamond", "diamond", "shape.diamond"),
+            tile("Heart", "heart", "shape.heart"),
+        ],
+    ),
+    (
+        "Block Arrows",
+        &[
+            tile("Arrow: Right", "arrow", "shape.blockArrowRight"),
+            tile("Arrow: Left", "arrowLeft", "shape.arrowLeft"),
+            tile("Arrow: Up", "arrowUp", "shape.arrowUp"),
+            tile("Arrow: Down", "arrowDown", "shape.arrowDown"),
+        ],
+    ),
+    ("Flowchart", &[tile("Flowchart: Or", "flowchartOr", "shape.flowchartOr")]),
+    ("Stars and Banners", &[tile("Star", "star", "shape.star")]),
 ];
 
 /// Shapes per row of the Insert › Shapes grid.
-const SHAPE_TILES_PER_ROW: usize = 5;
+const SHAPE_TILES_PER_ROW: usize = 8;
 
-/// The basic shapes as a grid of drawn tiles (#4349), each named by its tooltip; a click inserts it.
+/// Insert › Shapes: each category's name over a grid of drawn tiles (#4349), each named by its
+/// tooltip; a click inserts that shape.
 pub(super) fn shape_gallery(ui: &mut Ui, app: &mut WordApp) {
     use crate::{icons, theme::Tokens};
     use egui::{Rect, Sense, vec2};
@@ -26,20 +69,28 @@ pub(super) fn shape_gallery(ui: &mut Ui, app: &mut WordApp) {
     let enabled = crate::widgets::enabled(app, "insert.shape");
     ui.add_enabled_ui(enabled, |ui| {
         ui.spacing_mut().item_spacing = vec2(2.0, 2.0);
-        for row in SHAPE_TILES.chunks(SHAPE_TILES_PER_ROW) {
-            ui.horizontal(|ui| {
-                for (label, kind) in row {
-                    let (r, resp) = ui.allocate_exact_size(vec2(34.0, 34.0), Sense::click());
-                    let name = crate::tl!(label);
-                    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), name));
-                    crate::widgets::bg(ui, r, &resp, false, &t);
-                    icons::paint(ui.painter(), Rect::from_center_size(r.center(), vec2(24.0, 24.0)), &format!("shape.{kind}"), t.icon, t.accent);
-                    if resp.on_hover_text(name).clicked() {
-                        crate::widgets::run_from_ribbon(app, "insert.shape", json!({"kind": kind}));
-                        ui.close();
+        for (category, tiles) in SHAPE_CATEGORIES {
+            ui.label(egui::RichText::new(crate::tl!(category)).small().strong());
+            for row in tiles.chunks(SHAPE_TILES_PER_ROW) {
+                ui.horizontal(|ui| {
+                    for tile in row {
+                        let (r, resp) = ui.allocate_exact_size(vec2(30.0, 30.0), Sense::click());
+                        let name = crate::tl!(tile.label);
+                        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), name));
+                        crate::widgets::bg(ui, r, &resp, false, &t);
+                        icons::paint(ui.painter(), Rect::from_center_size(r.center(), vec2(22.0, 22.0)), tile.icon, t.icon, t.accent);
+                        if resp.on_hover_text(name).clicked() {
+                            let params = match tile.arrow {
+                                Some(arrow) => json!({"kind": tile.kind, "arrow": arrow}),
+                                None => json!({"kind": tile.kind}),
+                            };
+                            crate::widgets::run_from_ribbon(app, "insert.shape", params);
+                            ui.close();
+                        }
                     }
-                }
-            });
+                });
+            }
+            ui.add_space(2.0);
         }
     });
 }
@@ -52,7 +103,7 @@ pub(super) fn insert(app: &mut WordApp, ui: &mut Ui) {
                 app,
                 crate::widgets::MenuButtonOptions::new("coverPage", Some("Cover Page"), "Cover Page", false, "insert.coverPage"),
                 |ui, app| {
-                    mi(ui, app, "Studio cover", "insert.coverPage", json!({}));
+                    mi_pic(ui, app, "menu.coverPage", "Studio cover", None, "insert.coverPage", json!({}));
                 },
             );
             small(ui, app, "blankPage", Some("Blank Page"), "Blank Page", crate::widgets::ButtonAction::new("insert.blankPage", json!({}), false));
@@ -79,19 +130,8 @@ pub(super) fn insert(app: &mut WordApp, ui: &mut Ui) {
         menu_button(ui, app, crate::widgets::MenuButtonOptions::new("shapes", Some("Shapes"), "Shapes", true, "insert.shape"), |ui, app| {
             shape_gallery(ui, app);
             ui.separator();
+            // Connectors (under Lines) glue their ends to shapes by dragging them (shape.connect).
             mi_icon(ui, app, "canvas", "New Drawing Canvas", "insert.canvas", json!({}));
-            // Connectors: glue their ends to shapes by dragging them (shape.connect).
-            for (l, k, arrow) in [
-                ("Straight Connector", "straightConnector", "none"),
-                ("Straight Arrow Connector", "straightConnector", "end"),
-                ("Elbow Connector", "elbowConnector", "none"),
-                ("Elbow Arrow Connector", "elbowConnector", "end"),
-                ("Curved Connector", "curvedConnector", "none"),
-                ("Curved Arrow Connector", "curvedConnector", "end"),
-            ] {
-                let icon = if arrow == "end" { k.replace("Connector", "ArrowConnector") } else { k.to_string() };
-                mi_icon(ui, app, &format!("shape.{icon}"), l, "insert.shape", json!({"kind": k, "arrow": arrow}));
-            }
         });
         stack(ui, |ui| {
             small(ui, app, "icons", Some("Icons"), "Icons", crate::widgets::ButtonAction::new("insert.icon", json!({}), false));
@@ -125,17 +165,17 @@ pub(super) fn insert(app: &mut WordApp, ui: &mut Ui) {
     });
     group(ui, "Header & Footer", None, app, |ui, app| {
         menu_button(ui, app, crate::widgets::MenuButtonOptions::new("header", Some("Header"), "Header", true, "insert.header"), |ui, app| {
-            mi(ui, app, "Blank", "insert.header", json!({"preset": "blank"}));
-            mi(ui, app, "Blank (Three Columns)", "insert.header", json!({"preset": "blankThree"}));
-            mi(ui, app, "Document Title", "insert.header", json!({"preset": "title"}));
+            for (l, k) in [("Blank", "blank"), ("Blank (Three Columns)", "blankThree"), ("Document Title", "title")] {
+                mi_pic(ui, app, &format!("menu.header.{k}"), l, None, "insert.header", json!({"preset": k}));
+            }
             ui.separator();
             mi(ui, app, "Edit Header", "insert.editHeader", json!({}));
             mi(ui, app, "Remove Header", "insert.removeHeader", json!({}));
         });
         menu_button(ui, app, crate::widgets::MenuButtonOptions::new("footer", Some("Footer"), "Footer", true, "insert.footer"), |ui, app| {
-            mi(ui, app, "Blank", "insert.footer", json!({"preset": "blank"}));
-            mi(ui, app, "Blank (Three Columns)", "insert.footer", json!({"preset": "blankThree"}));
-            mi(ui, app, "Page Number", "insert.footer", json!({"preset": "pageNumber"}));
+            for (l, k) in [("Blank", "blank"), ("Blank (Three Columns)", "blankThree"), ("Page Number", "pageNumber")] {
+                mi_pic(ui, app, &format!("menu.footer.{k}"), l, None, "insert.footer", json!({"preset": k}));
+            }
             ui.separator();
             mi(ui, app, "Edit Footer", "insert.editFooter", json!({}));
             mi(ui, app, "Remove Footer", "insert.removeFooter", json!({}));
@@ -145,10 +185,18 @@ pub(super) fn insert(app: &mut WordApp, ui: &mut Ui) {
             app,
             crate::widgets::MenuButtonOptions::new("pageNumber", Some("Page\nNumber"), "Page Number", true, "insert.pageNumber"),
             |ui, app| {
-                mi(ui, app, "Top of Page", "insert.pageNumber", json!({"position": "top", "align": "right"}));
-                mi(ui, app, "Bottom of Page", "insert.pageNumber", json!({"position": "bottom", "align": "center"}));
-                mi(ui, app, "Page X of Y", "insert.pageNumber", json!({"position": "bottom", "format": "x of y"}));
-                mi(ui, app, "Current Position", "insert.pageNumber", json!({"position": "current"}));
+                mi_pic(ui, app, "menu.pageNumber.top", "Top of Page", None, "insert.pageNumber", json!({"position": "top", "align": "right"}));
+                mi_pic(
+                    ui,
+                    app,
+                    "menu.pageNumber.bottom",
+                    "Bottom of Page",
+                    None,
+                    "insert.pageNumber",
+                    json!({"position": "bottom", "align": "center"}),
+                );
+                mi_pic(ui, app, "menu.pageNumber.xOfY", "Page X of Y", None, "insert.pageNumber", json!({"position": "bottom", "format": "x of y"}));
+                mi_pic(ui, app, "menu.pageNumber.current", "Current Position", None, "insert.pageNumber", json!({"position": "current"}));
                 mi(ui, app, "Format Page Numbers…", "ui.dialog", json!({"name": "pageNumbers"}));
             },
         );
@@ -231,8 +279,10 @@ pub(super) fn insert(app: &mut WordApp, ui: &mut Ui) {
 /// then the Drop Cap dialog.
 fn drop_cap_items(ui: &mut Ui, app: &mut WordApp) {
     let current = wordcraft_engine::cmd::insert::drop_cap_state(&app.session).position;
-    for (label, v) in [("None", "none"), ("Dropped", "dropped"), ("In margin", "margin")] {
-        mi_check(ui, app, label, current == v, "insert.dropCap", json!({"position": v}));
+    for (label, v, icon) in
+        [("None", "none", "menu.dropCap.none"), ("Dropped", "dropped", "menu.dropCap.dropped"), ("In margin", "margin", "menu.dropCap.margin")]
+    {
+        mi_pic(ui, app, icon, label, Some(current == v), "insert.dropCap", json!({"position": v}));
     }
     ui.separator();
     mi(ui, app, "Drop Cap Options…", "ui.dialog", json!({"name": "dropCap"}));

@@ -1,4 +1,4 @@
-use super::common::{mi, mi_text, stack};
+use super::common::{mi, mi_pic, stack, tile_rows};
 use super::underline::underline_menu;
 use super::{Remember, Stroke, Target, Tokens, Ui, Value, WordApp, big, group, json, menu_button, small, split, vec2};
 
@@ -203,16 +203,7 @@ pub(super) fn home(app: &mut WordApp, ui: &mut Ui) {
                     crate::widgets::ButtonAction::new("para.numbering", json!({}), lists.numbering),
                     None,
                     |ui, app| {
-                        for (l, k) in [
-                            ("1. 2. 3.", "numbered"),
-                            ("1) 2) 3)", "numberedParen"),
-                            ("I. II. III.", "outline"),
-                            ("A. B. C.", "upperLetter"),
-                            ("a) b) c)", "lowerLetter"),
-                            ("i. ii. iii.", "lowerRoman"),
-                        ] {
-                            mi(ui, app, l, "para.numbering", json!({"kind": k}));
-                        }
+                        numbering_library(ui, app);
                         ui.separator();
                         mi(ui, app, "Restart at 1", "para.restartNumbering", json!({}));
                         mi(ui, app, "None", "para.numbering", json!({"off": true}));
@@ -226,25 +217,7 @@ pub(super) fn home(app: &mut WordApp, ui: &mut Ui) {
                     crate::widgets::ButtonAction::new("para.multilevel", json!({}), lists.multilevel),
                     None,
                     |ui, app| {
-                        mi(ui, app, "1. 1.1. 1.1.1.", "para.multilevel", json!({"kind": "legal"}));
-                        mi(ui, app, "I. A. 1. a.", "para.multilevel", json!({"kind": "outline"}));
-                        ui.separator();
-                        // Lists linked to the heading styles: the headings carry the numbers. Each item
-                        // reads as its first three levels, number then (translated) style name.
-                        for (numbers, k) in [
-                            (["1", "1.1", "1.1.1"], "headings"),
-                            (["Article I.", "Section 1.01", "(a)"], "article"),
-                            (["I.", "A.", "1."], "outlineHeadings"),
-                            (["Chapter 1", "", ""], "chapter"),
-                        ] {
-                            let text = numbers
-                                .iter()
-                                .zip(["Heading 1", "Heading 2", "Heading 3"])
-                                .map(|(n, h)| if n.is_empty() { tl!(h).to_string() } else { format!("{} {}", tl!(n), tl!(h)) })
-                                .collect::<Vec<_>>()
-                                .join(" / ");
-                            mi_text(ui, app, &text, "list.multilevelPreset", json!({"preset": k}));
-                        }
+                        multilevel_library(ui, app);
                         ui.separator();
                         mi(ui, app, "Define New Multilevel List…", "list.define", json!({}));
                         ui.separator();
@@ -277,12 +250,24 @@ pub(super) fn home(app: &mut WordApp, ui: &mut Ui) {
                     app,
                     crate::widgets::MenuButtonOptions::new("lineSpacing", None, "Line and Paragraph Spacing", false, "para.lineSpacing"),
                     |ui, app| {
+                        // The caret paragraph's spacing is checked, when it is one of these multiples.
+                        let current = rp.as_ref().and_then(|r| match r.line_spacing {
+                            wordcraft_doc::props::LineSpacing::Multiple(m) => Some(m),
+                            _ => None,
+                        });
                         for v in [1.0, 1.15, 1.5, 2.0, 2.5, 3.0] {
-                            mi(ui, app, &format!("{v}"), "para.lineSpacing", json!({"value": v}));
+                            super::language::mi_check(
+                                ui,
+                                app,
+                                &format!("{v}"),
+                                current.is_some_and(|c| (c - v).abs() < 0.01),
+                                "para.lineSpacing",
+                                json!({"value": v}),
+                            );
                         }
                         ui.separator();
-                        mi(ui, app, "Add Space Before Paragraph", "para.addSpaceBefore", json!({}));
-                        mi(ui, app, "Remove Space After Paragraph", "para.removeSpaceAfter", json!({}));
+                        mi_pic(ui, app, "menu.space.addBefore", "Add Space Before Paragraph", None, "para.addSpaceBefore", json!({}));
+                        mi_pic(ui, app, "menu.space.removeAfter", "Remove Space After Paragraph", None, "para.removeSpaceAfter", json!({}));
                         mi(ui, app, "Line Spacing Options…", "para.dialog", json!({}));
                     },
                 );
@@ -318,10 +303,10 @@ pub(super) fn home(app: &mut WordApp, ui: &mut Ui) {
                             ("Outside Borders", "outside"),
                             ("Inside Borders", "inside"),
                         ] {
-                            mi(ui, app, l, "para.borders", json!({"kind": k}));
+                            mi_pic(ui, app, &format!("menu.border.{k}"), l, None, "para.borders", json!({"kind": k}));
                         }
                         ui.separator();
-                        mi(ui, app, "Horizontal Line", "insert.horizontalLine", json!({}));
+                        mi_pic(ui, app, "menu.border.horizontalLine", "Horizontal Line", None, "insert.horizontalLine", json!({}));
                         mi(ui, app, "Borders and Shading…", "para.borders", json!({}));
                     },
                 );
@@ -352,5 +337,123 @@ pub(super) fn home(app: &mut WordApp, ui: &mut Ui) {
     });
     group(ui, "Editor", None, app, |ui, app| {
         big(ui, app, "editor", "Editor", "review.spelling", json!({}), false);
+    });
+}
+
+/// Home › Numbering's library (the menu entries are named as before, so scripts and tests find
+/// them): `para.numbering` kind and its first three numbers.
+pub(super) const NUMBERING_LIBRARY: [(&str, &str); 6] = [
+    ("1. 2. 3.", "numbered"),
+    ("1) 2) 3)", "numberedParen"),
+    ("I. II. III.", "outline"),
+    ("A. B. C.", "upperLetter"),
+    ("a) b) c)", "lowerLetter"),
+    ("i. ii. iii.", "lowerRoman"),
+];
+
+/// Home › Numbering's Numbering Library: None, then a tile per format showing three numbered
+/// lines, as Word's library does.
+fn numbering_library(ui: &mut Ui, app: &mut WordApp) {
+    ui.label(egui::RichText::new(tl!("Numbering Library")).small().weak());
+    let enabled = crate::widgets::enabled(app, "para.numbering");
+    let mut tiles: Vec<(&str, Option<&str>)> = vec![("None", None)];
+    tiles.extend(NUMBERING_LIBRARY.iter().map(|(l, k)| (*l, Some(*k))));
+    tile_rows(ui, &tiles, 4, |ui, (label, kind)| {
+        let name = tl!(label);
+        let resp = ui
+            .add_enabled_ui(enabled, |ui| {
+                crate::menu_visuals::tile(ui, vec2(70.0, 70.0), name, false, |ui, r, pal| match kind {
+                    // Each number on its own line, in the interface language.
+                    Some(_) => {
+                        let markers: Vec<String> = label.split(' ').map(|m| tl!(m).to_string()).collect();
+                        crate::menu_visuals::paint_numbering(ui, r, pal, &markers);
+                    }
+                    None => {
+                        crate::menu_visuals::page(ui, r, pal);
+                        ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, name, crate::theme::regular(11.0), crate::menu_visuals::PAGE_INK);
+                    }
+                })
+            })
+            .inner;
+        let clicked = resp.clicked();
+        if clicked {
+            let params = match kind {
+                Some(k) => json!({"kind": k}),
+                None => json!({"off": true}),
+            };
+            crate::widgets::run_from_ribbon(app, "para.numbering", params);
+        }
+        clicked
+    });
+}
+
+/// One of Home › Multilevel List's library lists: its command and parameters, and its first
+/// three levels' numbers with, for lists linked to headings, the heading each numbers.
+struct MultilevelPreset {
+    id: &'static str,
+    params: fn() -> Value,
+    numbers: [&'static str; 3],
+    headings: bool,
+}
+
+const MULTILEVEL_LIBRARY: [MultilevelPreset; 6] = [
+    MultilevelPreset { id: "para.multilevel", params: || json!({"kind": "legal"}), numbers: ["1.", "1.1.", "1.1.1."], headings: false },
+    MultilevelPreset { id: "para.multilevel", params: || json!({"kind": "outline"}), numbers: ["I.", "A.", "1."], headings: false },
+    MultilevelPreset { id: "list.multilevelPreset", params: || json!({"preset": "headings"}), numbers: ["1", "1.1", "1.1.1"], headings: true },
+    MultilevelPreset {
+        id: "list.multilevelPreset",
+        params: || json!({"preset": "article"}),
+        numbers: ["Article I.", "Section 1.01", "(a)"],
+        headings: true,
+    },
+    MultilevelPreset { id: "list.multilevelPreset", params: || json!({"preset": "outlineHeadings"}), numbers: ["I.", "A.", "1."], headings: true },
+    MultilevelPreset { id: "list.multilevelPreset", params: || json!({"preset": "chapter"}), numbers: ["Chapter 1", "", ""], headings: true },
+];
+
+impl MultilevelPreset {
+    /// The name the tile reads as: its numbers (`1. 1.1. 1.1.1.`) or, linked to headings, each
+    /// level's number then heading (`1 Heading 1 / 1.1 Heading 2 / …`), as the text menu named it.
+    fn label(&self) -> String {
+        if !self.headings {
+            return self.numbers.iter().map(|n| tl!(n)).collect::<Vec<_>>().join(" ");
+        }
+        self.numbers
+            .iter()
+            .zip(["Heading 1", "Heading 2", "Heading 3"])
+            .map(|(n, h)| if n.is_empty() { tl!(h).to_string() } else { format!("{} {}", tl!(n), tl!(h)) })
+            .collect::<Vec<_>>()
+            .join(" / ")
+    }
+
+    /// The tile's rows: number, and the heading's name for lists linked to headings.
+    fn levels(&self) -> Vec<(String, Option<String>)> {
+        self.numbers
+            .iter()
+            .zip(["Heading 1", "Heading 2", "Heading 3"])
+            .filter(|(n, _)| !n.is_empty() || self.headings)
+            .map(|(n, h)| (tl!(n).to_string(), self.headings.then(|| tl!(h).to_string())))
+            .collect()
+    }
+}
+
+/// Home › Multilevel List's List Library: a tile per list showing its first three levels.
+fn multilevel_library(ui: &mut Ui, app: &mut WordApp) {
+    ui.label(egui::RichText::new(tl!("List Library")).small().weak());
+    tile_rows(ui, &MULTILEVEL_LIBRARY, 3, |ui, preset| {
+        let enabled = crate::widgets::enabled(app, preset.id);
+        let label = preset.label();
+        let levels = preset.levels();
+        let resp = ui
+            .add_enabled_ui(enabled, |ui| {
+                crate::menu_visuals::tile(ui, vec2(96.0, 80.0), &label, false, |ui, r, pal| {
+                    crate::menu_visuals::paint_multilevel(ui, r, pal, &levels)
+                })
+            })
+            .inner;
+        let clicked = resp.clicked();
+        if clicked {
+            crate::widgets::run_from_ribbon(app, preset.id, (preset.params)());
+        }
+        clicked
     });
 }

@@ -1,4 +1,4 @@
-use super::common::{mi, mi_text, stack};
+use super::common::{mi, mi_pic, mi_pic_text, stack, tile_rows};
 use super::{CONTENT_H, Rect, Sense, Target, Ui, WordApp, big, group, json, menu_button, small, vec2};
 
 /// The Design tab's style set gallery in a box of its own, sized from its thumbnails and clipped
@@ -17,11 +17,7 @@ pub(super) fn style_set_box(app: &mut WordApp, ui: &mut Ui) -> (Rect, Rect) {
 
 pub(super) fn design(app: &mut WordApp, ui: &mut Ui) {
     group(ui, "Themes", None, app, |ui, app| {
-        menu_button(ui, app, crate::widgets::MenuButtonOptions::new("themes", Some("Themes"), "Themes", true, "design.themes"), |ui, app| {
-            for (name, ..) in wordcraft_engine::cmd::design::THEMES {
-                mi(ui, app, name, "design.theme", json!({"name": name}));
-            }
-        });
+        menu_button(ui, app, crate::widgets::MenuButtonOptions::new("themes", Some("Themes"), "Themes", true, "design.themes"), themes_gallery);
     });
     group(ui, "Document Formatting", None, app, |ui, app| {
         style_set_box(app, ui);
@@ -30,21 +26,13 @@ pub(super) fn design(app: &mut WordApp, ui: &mut Ui) {
                 ui,
                 app,
                 crate::widgets::MenuButtonOptions::new("colors", Some("Colors"), "Theme Colors", false, "design.themeColors"),
-                |ui, app| {
-                    for (name, ..) in wordcraft_engine::cmd::design::THEMES {
-                        mi(ui, app, name, "design.themeColors", json!({"name": name}));
-                    }
-                },
+                theme_colors_items,
             );
             menu_button(
                 ui,
                 app,
                 crate::widgets::MenuButtonOptions::new("fonts", Some("Fonts"), "Theme Fonts", false, "design.themeFonts"),
-                |ui, app| {
-                    for (name, h, b, _) in wordcraft_engine::cmd::design::THEMES {
-                        mi_text(ui, app, &format!("{}: {h} / {b}", tl!(name)), "design.themeFonts", json!({"heading": h, "body": b}));
-                    }
-                },
+                theme_fonts_items,
             );
         });
         stack(ui, |ui| {
@@ -70,11 +58,13 @@ pub(super) fn design(app: &mut WordApp, ui: &mut Ui) {
                     ] {
                         // "Open" here is roomy spacing, not the file verb: only a `spacing` row
                         // translates it, else it stays English.
+                        let icon = format!("menu.paraSpacing.{v}");
                         if l == "Open" {
-                            mi_text(ui, app, crate::i18n::get("spacing", l).unwrap_or(l), "design.paragraphSpacing", json!({"value": v}));
+                            let text = crate::i18n::get("spacing", l).unwrap_or(l);
+                            mi_pic_text(ui, app, &icon, text, None, "design.paragraphSpacing", json!({"value": v}));
                             continue;
                         }
-                        mi(ui, app, l, "design.paragraphSpacing", json!({"value": v}));
+                        mi_pic(ui, app, &icon, l, None, "design.paragraphSpacing", json!({"value": v}));
                     }
                 },
             );
@@ -95,9 +85,7 @@ pub(super) fn design(app: &mut WordApp, ui: &mut Ui) {
             app,
             crate::widgets::MenuButtonOptions::new("watermark", Some("Watermark"), "Watermark", true, "design.watermark"),
             |ui, app| {
-                for w in ["DRAFT", "CONFIDENTIAL", "DO NOT COPY", "SAMPLE", "ASAP", "URGENT"] {
-                    mi(ui, app, w, "design.watermark", json!({"text": w}));
-                }
+                watermark_gallery(ui, app);
                 ui.separator();
                 mi(ui, app, "Custom Watermark…", "ui.dialog", json!({"name": "watermark"}));
                 mi(ui, app, "Remove Watermark", "design.watermark", json!({"remove": true}));
@@ -114,5 +102,76 @@ pub(super) fn design(app: &mut WordApp, ui: &mut Ui) {
             },
         );
         big(ui, app, "pageBorders", "Page\nBorders", "design.pageBorders", json!({}), false);
+    });
+}
+
+/// Design › Themes: a tile per theme, "Aa" in its heading font over its colours; the
+/// document's theme is selected.
+fn themes_gallery(ui: &mut Ui, app: &mut WordApp) {
+    let current = app.session.doc.settings.theme_name.clone();
+    let enabled = crate::widgets::enabled(app, "design.theme");
+    tile_rows(ui, wordcraft_engine::cmd::design::THEMES, 3, |ui, (name, heading, _, accents)| {
+        let colors: Vec<egui::Color32> = accents.iter().map(|c| crate::theme::c32(*c)).collect();
+        let on = current.eq_ignore_ascii_case(name);
+        let resp = ui.add_enabled_ui(enabled, |ui| crate::menu_visuals::theme_tile(ui, &mut app.previews, tl!(name), heading, &colors, on)).inner;
+        let clicked = resp.clicked();
+        if clicked {
+            crate::widgets::run_from_ribbon(app, "design.theme", json!({"name": name}));
+        }
+        clicked
+    });
+}
+
+/// Design › Colors: each palette as a row of swatches and its name; the palette whose first
+/// accent the document uses is selected.
+fn theme_colors_items(ui: &mut Ui, app: &mut WordApp) {
+    let accent = app.session.doc.settings.theme_colors.get(4).copied();
+    let enabled = crate::widgets::enabled(app, "design.themeColors");
+    for (name, _, _, accents) in wordcraft_engine::cmd::design::THEMES {
+        let colors: Vec<egui::Color32> = accents.iter().map(|c| crate::theme::c32(*c)).collect();
+        let on = accent == accents.first().copied();
+        let resp = ui.add_enabled_ui(enabled, |ui| crate::menu_visuals::theme_colors_item(ui, tl!(name), &colors, on)).inner;
+        if resp.clicked() {
+            crate::widgets::run_from_ribbon(app, "design.themeColors", json!({"name": name}));
+            ui.close();
+        }
+    }
+}
+
+/// Design › Fonts: each pair as "Aa" in its heading font and the two fonts named in their own
+/// faces; the document's pair is selected. Each entry reads as `Name: Heading / Body`.
+fn theme_fonts_items(ui: &mut Ui, app: &mut WordApp) {
+    let settings = &app.session.doc.settings;
+    let (major, minor) = (settings.major_font.clone(), settings.minor_font.clone());
+    let enabled = crate::widgets::enabled(app, "design.themeFonts");
+    for (name, h, b, _) in wordcraft_engine::cmd::design::THEMES {
+        let label = format!("{}: {h} / {b}", tl!(name));
+        let on = major.eq_ignore_ascii_case(h) && minor.eq_ignore_ascii_case(b);
+        let resp = ui.add_enabled_ui(enabled, |ui| crate::menu_visuals::theme_fonts_item(ui, &mut app.previews, tl!(name), h, b, &label, on)).inner;
+        if resp.clicked() {
+            crate::widgets::run_from_ribbon(app, "design.themeFonts", json!({"heading": h, "body": b}));
+            ui.close();
+        }
+    }
+}
+
+/// The watermarks Design › Watermark offers ready-made.
+pub(super) const WATERMARKS: [&str; 6] = ["DRAFT", "CONFIDENTIAL", "DO NOT COPY", "SAMPLE", "ASAP", "URGENT"];
+
+/// Design › Watermark's gallery: a page with each watermark laid across it.
+fn watermark_gallery(ui: &mut Ui, app: &mut WordApp) {
+    let enabled = crate::widgets::enabled(app, "design.watermark");
+    tile_rows(ui, &WATERMARKS, 3, |ui, w| {
+        let text = tl!(w);
+        let resp = ui
+            .add_enabled_ui(enabled, |ui| {
+                crate::menu_visuals::tile(ui, vec2(72.0, 92.0), text, false, |ui, r, pal| crate::menu_visuals::paint_watermark(ui, r, pal, text))
+            })
+            .inner;
+        let clicked = resp.clicked();
+        if clicked {
+            crate::widgets::run_from_ribbon(app, "design.watermark", json!({"text": w}));
+        }
+        clicked
     });
 }

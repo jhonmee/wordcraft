@@ -1,4 +1,4 @@
-use super::common::{mi, stack};
+use super::common::{mi, mi_pic, stack};
 use super::{MeasureExt, Remember, Target, Ui, WordApp, big, group, json, menu_button, small, split, vec2};
 
 pub(super) fn table_design(app: &mut WordApp, ui: &mut Ui) {
@@ -104,7 +104,7 @@ pub(super) fn table_design(app: &mut WordApp, ui: &mut Ui) {
                 ("Top Border", "top"),
                 ("Bottom Border", "bottom"),
             ] {
-                mi(ui, app, l, "table.borders", json!({"kind": k}));
+                mi_pic(ui, app, &format!("menu.border.{k}"), l, None, "table.borders", json!({"kind": k}));
             }
         });
         big(ui, app, "borderPainter", "Border\nPainter", "table.borderPainter", json!({}), false);
