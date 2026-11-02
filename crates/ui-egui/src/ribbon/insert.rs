@@ -1,4 +1,4 @@
-use super::common::{mi, mi_icon, mi_pic, stack};
+use super::common::{mi, mi_pic, stack};
 use super::language::mi_check;
 use super::{Ui, WordApp, big, group, json, menu_button, small};
 
@@ -133,7 +133,14 @@ pub(super) fn insert(app: &mut WordApp, ui: &mut Ui) {
             shape_gallery(ui, app);
             ui.separator();
             // Connectors (under Lines) glue their ends to shapes by dragging them (shape.connect).
-            mi_icon(ui, app, "canvas", "New Drawing Canvas", "insert.canvas", json!({}));
+            // A menu button like the rest of the menu: it takes the menu's width, never widens it.
+            let entry = super::common::PicEntry {
+                icon: "canvas",
+                label: tl!("New Drawing Canvas").into(),
+                checked: None,
+                size: super::common::SMALL_PICTURE,
+            };
+            super::common::mi_pic_sized(ui, app, entry, "insert.canvas", json!({}));
         });
         stack(ui, |ui| {
             small(ui, app, "icons", Some("Icons"), "Icons", crate::widgets::ButtonAction::new("insert.icon", json!({}), false));

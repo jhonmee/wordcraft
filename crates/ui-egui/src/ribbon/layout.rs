@@ -1,27 +1,42 @@
 use super::arrange::{align_menu, group_menu, rotate_menu, wrap_menu};
-use super::common::{mi, mi_pic, size_menu, stack};
+use super::common::{PicEntry, mi, mi_pic, mi_pic_sized, size_menu, stack};
 use super::{MeasureExt, Ui, WordApp, big, group, json, menu_button, small, vec2};
 
 // Layout › Margins, Orientation, Size and Columns: the caret section's setting has a check
 // mark, as Text Direction's does (#1206).
 pub(super) fn margins_items(ui: &mut Ui, app: &mut WordApp) {
     let current = wordcraft_engine::cmd::page::margins_preset_at(&app.session);
-    // The two uniform presets name their margin in the measurement unit (`2,54 cm`, #838).
-    for (l, k, uniform) in [
-        ("Normal  {size} all", "normal", Some(72.0)),
-        ("Narrow  {size} all", "narrow", Some(36.0)),
-        ("Moderate", "moderate", None),
-        ("Wide", "wide", None),
-        ("Mirrored", "mirrored", None),
-        ("Office 2003 Default", "office2003", None),
+    for (name, k) in [
+        ("Normal", "normal"),
+        ("Narrow", "narrow"),
+        ("Moderate", "moderate"),
+        ("Wide", "wide"),
+        ("Mirrored", "mirrored"),
+        ("Office 2003 Default", "office2003"),
     ] {
-        let label = match uniform {
-            Some(pt) => crate::i18n::fmt(tl!(l), &[("size", &crate::options::length(pt))]),
-            None => l.to_string(),
+        // As in Word: the preset's name in bold over its four margins, in the measurement unit
+        // and written the region's way (`2,54 cm`, #838); facing pages have inside and outside.
+        let Some((_, [top, bottom, left, right])) = wordcraft_engine::cmd::page::MARGIN_PRESETS.iter().find(|(id, _)| *id == k) else {
+            continue;
         };
+        let (l_label, r_label) = if k == "mirrored" { ("Inside:", "Outside:") } else { ("Left:", "Right:") };
+        let len = crate::options::length;
+        let detail = format!(
+            "{} {}   {} {}\n{} {}   {} {}",
+            tl!("Top:"),
+            len(*top),
+            tl!("Bottom:"),
+            len(*bottom),
+            tl!(l_label),
+            len(*left),
+            tl!(r_label),
+            len(*right)
+        );
+        let label = crate::menu_visuals::two_line(ui, tl!(name), &detail);
         // Mirrored margins come from the document as well as from the preset (#1181).
         let on = current == Some(k) || (k == "mirrored" && app.session.doc.settings.mirror_margins);
-        mi_pic(ui, app, &format!("menu.margins.{k}"), &label, Some(on), "layout.margins", json!({"preset": k}));
+        let entry = PicEntry { icon: &format!("menu.margins.{k}"), label: label.into(), checked: Some(on), size: 36.0 };
+        mi_pic_sized(ui, app, entry, "layout.margins", json!({"preset": k}));
     }
     mi(ui, app, "Custom Margins…", "ui.dialog", json!({"name": "pageSetup"}));
 }

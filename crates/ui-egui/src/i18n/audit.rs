@@ -150,6 +150,9 @@ impl<'a> Exempt<'a> {
         names.extend(app.session.doc.styles.styles.iter().map(|s| s.name.clone()));
         // Fonts a document asks for, installed or not (Aptos is drawn with a substitute).
         names.extend([wordcraft_doc::styles::BODY_FONT, wordcraft_doc::styles::HEADING_FONT].map(str::to_string));
+        // Paper names are the industry's (Letter, A4, B5 (JIS)) and stay as they are in every
+        // language; Layout › Size sets each in bold over its size. The envelopes are translated.
+        names.extend(wordcraft_geom::PAPER_SIZES.iter().filter(|(n, ..)| !n.starts_with("Envelope ")).map(|(n, ..)| n.to_string()));
         // The selected SmartArt graphic's items (the Text Pane): document content.
         if let Some(g) = wordcraft_engine::cmd::smart_art::selected_smart_art(&app.session) {
             names.extend(g.items.iter().map(|i| i.text.clone()));
@@ -209,6 +212,8 @@ impl<'a> Exempt<'a> {
             || matches!(plain, "WordCraft" | "WordCraft User" | "Discord" | "https://" | "auto" | "I. II. III." | "i. ii. iii." | "I, II, III, …" | "i, ii, iii, …")
             || plain == "CONFIDENTIAL" // the watermark dialog's text: document content, kept as typed
             || plain == "Figure 1" // the caption dialog's sample: the label goes into the document as is
+            // A two-line menu entry (a paper's name over its size): each line on its own terms.
+            || (text.contains('\n') && text.lines().count() > 1 && text.lines().all(|line| !english_words(line) || self.allows(app, line)))
     }
 }
 

@@ -1,4 +1,4 @@
-use super::common::{mi, mi_pic, mi_text, stack, tile_rows};
+use super::common::{PicEntry, SMALL_PICTURE, mi, mi_pic, mi_pic_sized, mi_text, stack, tile_rows};
 use super::underline::underline_menu;
 use super::{Remember, Stroke, Target, Tokens, Ui, Value, WordApp, big, group, json, menu_button, small, split, vec2};
 
@@ -324,15 +324,28 @@ pub(super) fn home(app: &mut WordApp, ui: &mut Ui) {
         stack(ui, |ui| {
             menu_button(ui, app, crate::widgets::MenuButtonOptions::new("find", Some("Find"), "Find", false, "edit.find"), |ui, app| {
                 // As in Word: Find searches in the Navigation pane; Advanced Find is the dialog (#712).
-                mi(ui, app, "Find", "edit.find", json!({}));
-                mi(ui, app, "Advanced Find…", "edit.advancedFind", json!({}));
-                mi(ui, app, "Go To…", "ui.dialog", json!({"name": "goto"}));
+                for (icon, label, id, params) in [
+                    ("menu.find.find", "Find", "edit.find", json!({})),
+                    ("menu.find.advanced", "Advanced Find…", "edit.advancedFind", json!({})),
+                    ("menu.find.goto", "Go To…", "ui.dialog", json!({"name": "goto"})),
+                ] {
+                    mi_pic_sized(ui, app, PicEntry { icon, label: tl!(label).into(), checked: None, size: SMALL_PICTURE }, id, params);
+                }
             });
             small(ui, app, "replace", Some("Replace"), "Replace", crate::widgets::ButtonAction::new("ui.dialog", json!({"name": "replace"}), false));
             menu_button(ui, app, crate::widgets::MenuButtonOptions::new("select", Some("Select"), "Select", false, "select.all"), |ui, app| {
-                mi(ui, app, "Select All", "select.all", json!({}));
-                mi(ui, app, "Select Paragraph", "select.paragraph", json!({}));
-                mi(ui, app, "Select Sentence", "select.sentence", json!({}));
+                for (icon, label, id) in [
+                    ("menu.select.all", "Select All", "select.all"),
+                    ("menu.select.paragraph", "Select Paragraph", "select.paragraph"),
+                    ("menu.select.sentence", "Select Sentence", "select.sentence"),
+                    ("menu.select.similar", "Select Text with Similar Formatting", "select.similar"),
+                ] {
+                    mi_pic_sized(ui, app, PicEntry { icon, label: tl!(label).into(), checked: None, size: SMALL_PICTURE }, id, json!({}));
+                }
+                // As in Word, the Selection Pane lists the page's pictures and shapes to pick from.
+                ui.separator();
+                let entry = PicEntry { icon: "selectionPane", label: tl!("Selection Pane").into(), checked: None, size: SMALL_PICTURE };
+                mi_pic_sized(ui, app, entry, "arrange.selectionPane", json!({}));
             });
         });
     });
