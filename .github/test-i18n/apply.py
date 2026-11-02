@@ -5,7 +5,7 @@ the fork's Windows test build adds them so the new menus can be tried in every l
 """
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from rows import L, PLAIN, SHAPES, SHAPES_FIX
+from rows import L, PLAIN, SHAPES, SHAPES_FIX, CONTEXT
 root = sys.argv[1]
 added = 0
 for loc in L:
@@ -26,6 +26,9 @@ for loc in L:
     for src, tr in shapes.items():
         if have.get(("", src)) != tr and ("shapes", src) not in have:
             out.append(("shapes", src, tr))
+    for (ctx, src), tr in CONTEXT.items():
+        if (ctx, src) not in have:
+            out.append((ctx, src, tr[loc]))
     if not out:
         continue
     p = os.path.join(root, "locales", loc, "wordcraft.tsv")

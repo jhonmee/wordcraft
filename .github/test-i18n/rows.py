@@ -71,3 +71,9 @@ for loc, vals in CONNECTOR_FILL.items():
 # The numbering library's Roman numerals: list numbers, the same in every language (kept as is).
 for numeral in ["II.", "III.", "ii.", "iii."]:
     PLAIN[numeral] = {loc: numeral for loc in L}
+
+# Other worded-for-context rows: (context, English) -> translations.
+CONTEXT = {
+    # Design › Paragraph Spacing's "Open" preset: roomy spacing, not the file verb.
+    ("spacing", "Open"): row("متباعد","Просторно","Vzdušné","Luftig","Offen","Αραιό","Abierto","Õhuline","Väljä","Aéré","Prozračno","Levegős","Longgar","Arioso","広め","ფართო","Кең","넓게","Erdvus","Ruim","Przestronne","Aberto","Aerisit","Просторный","Zračno","Пространо","Prostrano","Luftig","విశాలం","Ferah","Просторий","Thoáng","宽松","寬鬆"),
+}
