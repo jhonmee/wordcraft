@@ -88,7 +88,27 @@ const MENU_PICTURES: &[&str] = &[
     "toc.3",
     "toc.2",
     "coverPage",
+    "page.612x792",
+    "page.297x420",
+    "find.find",
+    "find.advanced",
+    "find.goto",
+    "select.all",
+    "select.paragraph",
+    "select.sentence",
+    "select.similar",
 ];
+
+/// A paper picture's size comes from its name: names that aren't two positive, finite numbers
+/// draw nothing instead of a page of a NaN or negative size.
+#[test]
+fn paper_pictures_refuse_hostile_sizes() {
+    for name in ["page.", "page.x", "page.612", "page.NaNx792", "page.-5x7", "page.0x0", "page.infx3", "page.1e40x2"] {
+        let mut known = true;
+        let shapes = painted(|p, r| known = glyphs::paint(p, r, name, Color32::BLACK, Color32::BLUE));
+        assert!(!known && shapes.is_empty(), "{name} draws nothing");
+    }
+}
 
 /// Every menu picture the menus name has a drawing of its own, and an unknown name has none
 /// (it falls back to the icon set's lettered tile instead of drawing nothing).

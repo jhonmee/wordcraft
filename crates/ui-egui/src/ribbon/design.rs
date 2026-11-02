@@ -47,6 +47,8 @@ pub(super) fn design(app: &mut WordApp, ui: &mut Ui) {
                     "design.paragraphSpacing",
                 ),
                 |ui, app| {
+                    // As in Word, the presets sit under a Built-In heading.
+                    ui.label(egui::RichText::new(tl!("Built-In")).small().weak());
                     for (l, v) in [
                         ("Default", "default"),
                         ("No Paragraph Space", "none"),

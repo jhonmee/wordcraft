@@ -119,7 +119,7 @@ pub trait FontSamples {
 /// [`glyphs::paint`] or the app's icon set (`icons::paint(icon)`) and `label` (already in the
 /// interface language), with `shortcut` at the right. Reports `label` to assistive technology
 /// and, when checked, the toggled state.
-pub fn picture_item(ui: &mut Ui, icon: &str, label: &str, checked: Option<bool>, size: f32, shortcut: &str) -> Response {
+pub fn picture_item(ui: &mut Ui, icon: &str, label: impl Into<egui::WidgetText>, checked: Option<bool>, size: f32, shortcut: &str) -> Response {
     let on = checked.unwrap_or(false);
     let mark = egui::Atom::paint(vec2(if checked.is_some() { 14.0 } else { 0.0 }, 14.0), move |ui, args| {
         if on {
@@ -134,9 +134,27 @@ pub fn picture_item(ui: &mut Ui, icon: &str, label: &str, checked: Option<bool>,
         let (line, accent) = if enabled { (pal.icon, pal.accent) } else { (pal.text_disabled, pal.text_disabled) };
         crate::icons::paint(ui.painter(), args.rect, icon, line, accent);
     });
-    let button = egui::Button::new((mark, picture, label)).selected(on).min_size(vec2(200.0, size + 4.0));
+    let button = egui::Button::new((mark, picture, label.into())).selected(on).min_size(vec2(200.0, size + 4.0));
     let button = if shortcut.is_empty() { button } else { button.shortcut_text(shortcut) };
     ui.add(button)
+}
+
+/// An entry's label on two lines, as Word's picture menus set them: `title` in bold over
+/// `detail` (sizes, margins), each in the entry's own text colour (hover and selection
+/// included). The entry reads as both lines to assistive technology.
+pub fn two_line(ui: &Ui, title: &str, detail: &str) -> egui::text::LayoutJob {
+    let size = egui::TextStyle::Button.resolve(ui.style()).size;
+    let mut job = egui::text::LayoutJob::default();
+    let format = |font| egui::TextFormat { font_id: font, color: Color32::PLACEHOLDER, ..Default::default() };
+    // The title in the interface's semibold face; where none is installed (a bare harness),
+    // the regular one, rather than laying text out in a family with no fonts.
+    let bold = semibold(size);
+    let has_bold = ui.ctx().fonts(|f| f.definitions().families.get(&bold.family).is_some_and(|faces| !faces.is_empty()));
+    job.append(title, 0.0, format(if has_bold { bold } else { regular(size) }));
+    if !detail.is_empty() {
+        job.append(&format!("\n{detail}"), 0.0, format(regular(size - 0.5)));
+    }
+    job
 }
 
 /// A menu entry showing a line `width` points thick (Weight, Thickness, Picture Border) before
@@ -312,55 +330,50 @@ pub fn draw_sample(ui: &Ui, tex: &TextureHandle, at: egui::Pos2, color: Color32)
 }
 
 /// Theme Fonts entry: an "Aa" in the heading font, then the set's `name` over its heading and
-/// body fonts, each named in its own face. `label` (name and fonts) is what assistive technology
-/// reads.
+/// body fonts, each named in its own face. A menu button like the others, so it takes the
+/// menu's width without widening it; `label` (name and fonts) is what assistive technology reads.
 pub fn theme_fonts_item(ui: &mut Ui, fonts: &mut dyn FontSamples, name: &str, heading: &str, body: &str, label: &str, selected: bool) -> Response {
-    const W: f32 = 290.0;
-    const H: f32 = 52.0;
-    // Wide enough for the set's name in any language (the "Aa" box takes 56 points).
-    let name_w = ui.painter().layout_no_wrap(name.to_string(), regular(10.5), Color32::PLACEHOLDER).size().x;
-    let (r, resp) = ui.allocate_exact_size(vec2(W.max(56.0 + name_w + 12.0).max(ui.available_width()), H), Sense::click());
-    let enabled = ui.is_enabled();
-    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, enabled, selected, label));
-    let pal = MenuPalette::get(ui.ctx());
-    if let Some(fill) = highlight(&resp, selected, &pal) {
-        ui.painter().rect_filled(r, 3.0, fill);
-    }
-    let ink = if enabled { pal.text } else { pal.text_disabled };
+    const LINE_W: f32 = 190.0;
     let ctx = ui.ctx().clone();
-    let aa = Rect::from_min_size(pos2(r.left() + 6.0, r.top() + 6.0), vec2(40.0, 40.0));
-    ui.painter().rect_stroke(aa, 2.0, Stroke::new(1.0, pal.border), egui::StrokeKind::Inside);
-    if let Some(tex) = fonts.font_sample(&ctx, heading, "Aa", 20.0, 36.0, 30.0) {
-        let sz = tex.size_vec2() / ctx.pixels_per_point();
-        draw_sample(ui, &tex, aa.center() - sz / 2.0 + vec2(4.0, 0.0), ink);
-    }
-    let x = aa.right() + 10.0;
-    ui.painter().text(pos2(x, r.top() + 4.0), Align2::LEFT_TOP, name, regular(10.5), if enabled { pal.text_dim } else { pal.text_disabled });
-    let line_w = (r.right() - x - 6.0).max(40.0);
-    for (i, family) in [heading, body].iter().enumerate() {
-        if let Some(tex) = fonts.font_sample(&ctx, family, family, 12.5, line_w, 16.0) {
-            draw_sample(ui, &tex, pos2(x, r.top() + 18.0 + i as f32 * 16.0), ink);
+    let aa = fonts.font_sample(&ctx, heading, "Aa", 20.0, 36.0, 30.0);
+    let samples = [heading, body].map(|family| fonts.font_sample(&ctx, family, family, 12.5, LINE_W, 16.0));
+    let enabled = ui.is_enabled();
+    let name_w = ui.painter().layout_no_wrap(name.to_string(), regular(10.5), Color32::PLACEHOLDER).size().x;
+    let name = name.to_string();
+    let aa_atom = egui::Atom::paint(vec2(40.0, 40.0), move |ui, args| {
+        let pal = MenuPalette::get(ui.ctx());
+        let ink = if enabled { pal.text } else { pal.text_disabled };
+        ui.painter().rect_stroke(args.rect, 2.0, Stroke::new(1.0, pal.border), egui::StrokeKind::Inside);
+        if let Some(tex) = &aa {
+            let sz = tex.size_vec2() / ui.ctx().pixels_per_point();
+            draw_sample(ui, tex, args.rect.center() - sz / 2.0 + vec2(4.0, 0.0), ink);
         }
-    }
+    });
+    let info = egui::Atom::paint(vec2(LINE_W.max(name_w), 46.0), move |ui, args| {
+        let pal = MenuPalette::get(ui.ctx());
+        let (ink, dim) = if enabled { (pal.text, pal.text_dim) } else { (pal.text_disabled, pal.text_disabled) };
+        let r = args.rect;
+        ui.painter().text(r.min, Align2::LEFT_TOP, &name, regular(10.5), dim);
+        for (i, tex) in samples.iter().enumerate() {
+            if let Some(tex) = tex {
+                draw_sample(ui, tex, pos2(r.left(), r.top() + 14.0 + i as f32 * 16.0), ink);
+            }
+        }
+    });
+    let resp = ui.add(egui::Button::new((aa_atom, info)).selected(selected).min_size(vec2(200.0, 50.0)));
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, enabled, selected, label));
     resp
 }
 
-/// Theme Colors entry: the palette's swatches, then its `name`.
+/// Theme Colors entry: the palette's swatches, then its `name`; a menu button like the others,
+/// so it takes the menu's width without widening it.
 pub fn theme_colors_item(ui: &mut Ui, name: &str, colors: &[Color32], selected: bool) -> Response {
-    // Wide enough for the swatches and the palette's name in any language.
-    let name_w = ui.painter().layout_no_wrap(name.to_string(), regular(12.0), Color32::PLACEHOLDER).size().x;
-    let need = 8.0 + colors.len() as f32 * 18.0 + 8.0 + name_w + 12.0;
-    let (r, resp) = ui.allocate_exact_size(vec2(260.0_f32.max(need).max(ui.available_width()), 26.0), Sense::click());
-    let enabled = ui.is_enabled();
-    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, enabled, selected, name));
-    let pal = MenuPalette::get(ui.ctx());
-    if let Some(fill) = highlight(&resp, selected, &pal) {
-        ui.painter().rect_filled(r, 3.0, fill);
-    }
-    paint_swatches(ui, Rect::from_min_max(pos2(r.left() + 8.0, r.top()), r.max), colors, 16.0, &pal);
-    let x = r.left() + 8.0 + colors.len() as f32 * 18.0 + 8.0;
-    ui.painter().text(pos2(x, r.center().y), Align2::LEFT_CENTER, name, regular(12.0), if enabled { pal.text } else { pal.text_disabled });
-    resp
+    let colors = colors.to_vec();
+    let swatches = egui::Atom::paint(vec2(colors.len() as f32 * 18.0, 16.0), move |ui, args| {
+        let pal = MenuPalette::get(ui.ctx());
+        paint_swatches(ui, args.rect, &colors, 16.0, &pal);
+    });
+    ui.add(egui::Button::new((swatches, name)).selected(selected).min_size(vec2(200.0, 26.0)))
 }
 
 /// A Themes tile: "Aa" in the theme's heading font over a bar of its accent colours, its `name`

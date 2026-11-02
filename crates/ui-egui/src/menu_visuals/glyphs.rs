@@ -67,6 +67,25 @@ impl Pen<'_> {
     fn arrow_down(&self, x: f32, y: f32, c: Color32) {
         self.fill(&[(x - 2.5, y - 1.2), (x + 2.5, y - 1.2), (x, y + 1.5)], c);
     }
+    /// A rectangle outlined with a whole number of screen pixels whose edges sit on the pixel
+    /// grid, optionally filled: nested rectangles (a page and its text area) stay crisp and
+    /// evenly spaced at any interface size instead of blurring a half pixel to one side.
+    fn crisp_rect(&self, x0: f32, y0: f32, x1: f32, y1: f32, stroke: Color32, fill: Option<Color32>) {
+        let ppp = self.p.pixels_per_point().max(0.5);
+        let px = (self.w * self.s() * ppp).round().max(1.0);
+        let width = px / ppp;
+        // An odd number of pixels is centred on a pixel's middle, an even one on its edge.
+        let snap = |v: f32| {
+            let v = v * ppp;
+            (if px % 2.0 == 1.0 { v.floor() + 0.5 } else { v.round() }) / ppp
+        };
+        let (a, b) = (self.pt(x0, y0), self.pt(x1, y1));
+        let r = Rect::from_min_max(pos2(snap(a.x), snap(a.y)), pos2(snap(b.x), snap(b.y)));
+        if let Some(fill) = fill {
+            self.p.rect_filled(r, 0.0, fill);
+        }
+        self.p.rect_stroke(r, 0.0, Stroke::new(width, stroke), egui::StrokeKind::Middle);
+    }
 }
 
 /// Paints menu picture `name` into `r` in line colour `c` and accent `a`; false when there is
@@ -129,6 +148,12 @@ pub fn paint(p: &Painter, r: Rect, name: &str, c: Color32, a: Color32) -> bool {
     if name == "coverPage" {
         return cover_page(&pen);
     }
+    if let Some(k) = name.strip_prefix("page.") {
+        return paper(&pen, k);
+    }
+    if let Some(k) = name.strip_prefix("find.").or_else(|| name.strip_prefix("select.")) {
+        return find_select(&pen, k);
+    }
     false
 }
 
@@ -178,9 +203,8 @@ fn dashed_v(pen: &Pen, x: f32, y0: f32, y1: f32, c: Color32) {
 fn margined_page(pen: &Pen, page: (f32, f32, f32, f32), m: (f32, f32, f32, f32)) {
     let (x0, y0, x1, y1) = page;
     let (left, top, right, bottom) = m;
-    sheet(pen, x0, y0, x1, y1);
-    pen.frect(x0 + left, y0 + top, x1 - right, y1 - bottom, tint(pen));
-    pen.rect(x0 + left, y0 + top, x1 - right, y1 - bottom, pen.a);
+    pen.crisp_rect(x0, y0, x1, y1, pen.c, None);
+    pen.crisp_rect(x0 + left, y0 + top, x1 - right, y1 - bottom, pen.a, Some(tint(pen)));
 }
 
 /// Layout › Margins: the page and its text area, the margins in proportion.
@@ -561,25 +585,112 @@ fn border(pen: &Pen, k: &str) -> bool {
 /// Design › Paragraph Spacing: two paragraphs, their lines and the gap between them in the
 /// preset's proportions (`none` packs everything; `double` spreads it out).
 fn para_spacing(pen: &Pen, k: &str) -> bool {
-    // (line pitch, gap after a paragraph), in grid units.
-    let (pitch, gap) = match k {
-        "default" => (2.6, 2.4),
-        "none" => (2.4, 0.0),
-        "compact" => (2.4, 1.2),
-        "tight" => (2.2, 1.8),
-        "open" => (2.9, 2.6),
-        "relaxed" => (3.1, 2.6),
-        "double" => (4.2, 2.6),
+    // (line pitch, space after a paragraph), in grid units: the preset's proportions.
+    let (pitch, gap): (f32, f32) = match k {
+        "default" => (1.7, 1.6),
+        "none" => (1.6, 0.0),
+        "compact" => (1.6, 0.8),
+        "tight" => (1.5, 1.2),
+        "open" => (1.9, 1.9),
+        "relaxed" => (2.1, 1.9),
+        "double" => (2.8, 1.9),
         _ => return false,
     };
-    let mut y = 2.5;
-    for para in 0..2 {
-        for line in 0..2 {
-            let x1 = if line == 1 { 13.0 } else { 17.0 };
-            pen.line_c(&[(3.0, y), (x1, y)], if para == 0 { pen.c } else { ink(pen) });
+    // A page: a heading in the accent, then paragraphs of three lines, the last one short, as far
+    // as the page goes.
+    let (x0, y0, x1, y1) = (3.5, 1.0, 16.5, 19.0);
+    pen.crisp_rect(x0, y0, x1, y1, pen.c, None);
+    pen.p.line_segment([pen.pt(5.5, 3.6), pen.pt(12.0, 3.6)], Stroke::new(1.4 * pen.s(), pen.a));
+    let mut y = 3.6 + 1.6 + gap.max(0.6);
+    'page: for _ in 0..6 {
+        for line in 0..3 {
+            if y > y1 - 1.2 {
+                break 'page;
+            }
+            let end = if line == 2 { 10.5 } else { 14.5 };
+            pen.line_c(&[(5.5, y), (end, y)], ink(pen));
             y += pitch;
         }
         y += gap;
+    }
+    true
+}
+
+/// Layout › Size: a page in the paper's proportions and at its size relative to the largest
+/// paper the menu lists (`page.612x792`: width and height in points), as Word draws them, so A5
+/// reads smaller than A4 and an envelope reads long and thin.
+fn paper(pen: &Pen, k: &str) -> bool {
+    let Some((w, h)) = k.split_once('x').and_then(|(w, h)| Some((w.parse::<f32>().ok()?, h.parse::<f32>().ok()?))) else {
+        return false;
+    };
+    if !(w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0) {
+        return false;
+    }
+    // The largest listed paper (A3 and Tabloid are about 1,200 points tall) fills the grid.
+    let scale = 18.0 / 1224.0;
+    let (pw, ph) = ((w * scale).clamp(4.0, 18.0), (h * scale).clamp(4.0, 18.0));
+    let (x0, y0) = (10.0 - pw / 2.0, 10.0 - ph / 2.0);
+    pen.crisp_rect(x0, y0, x0 + pw, y0 + ph, pen.c, Some(pen.c.gamma_multiply(0.08)));
+    true
+}
+
+/// Home › Find and Select: magnifier, magnifier with options, go to an arrow; the selections.
+fn find_select(pen: &Pen, k: &str) -> bool {
+    let a = pen.a;
+    let magnifier = |cx: f32, cy: f32, r: f32| {
+        pen.p.circle_stroke(pen.pt(cx, cy), r * pen.s(), pen.stroke(pen.c));
+        let d = r * 0.72;
+        pen.p.line_segment([pen.pt(cx + d, cy + d), pen.pt(cx + d + 4.0, cy + d + 4.0)], Stroke::new(2.0 * pen.s(), pen.c));
+    };
+    match k {
+        "find" => magnifier(8.5, 8.5, 5.0),
+        // Find with its options: the magnifier over a list of settings.
+        "advanced" => {
+            magnifier(7.0, 7.0, 4.2);
+            for (i, y) in [12.5, 15.0, 17.5].into_iter().enumerate() {
+                pen.fcircle(12.0, y, 0.8, a);
+                pen.line_c(&[(13.8, y), (if i == 1 { 17.0 } else { 18.5 }, y)], ink(pen));
+            }
+        }
+        // Go To: an arrow to a page.
+        "goto" => {
+            pen.crisp_rect(11.0, 3.0, 18.0, 17.0, pen.c, None);
+            pen.line_c(&[(2.0, 10.0), (9.0, 10.0)], a);
+            pen.fill(&[(10.5, 10.0), (7.5, 7.5), (7.5, 12.5)], a);
+        }
+        // Select All: every line highlighted.
+        "all" => {
+            for y in [4.0, 8.0, 12.0, 16.0] {
+                pen.frect(2.5, y - 1.3, 17.5, y + 1.3, tint(pen));
+                pen.line_c(&[(3.5, y), (if y == 16.0 { 11.0 } else { 16.5 }, y)], pen.c);
+            }
+        }
+        // Select Paragraph: one paragraph of three highlighted, its mark at the end.
+        "paragraph" => {
+            text_lines(pen, 2.5, 17.5, &[3.0]);
+            pen.frect(2.0, 5.6, 18.0, 13.6, tint(pen));
+            text_lines(pen, 3.0, 17.0, &[7.0, 10.0]);
+            pen.line_c(&[(3.0, 12.5), (10.0, 12.5)], pen.c);
+            pen.text(12.0, 12.4, 3.6, "¶", a, true);
+            text_lines(pen, 2.5, 17.5, &[16.5]);
+        }
+        // Select Sentence: part of a line highlighted, up to its full stop.
+        "sentence" => {
+            text_lines(pen, 2.5, 17.5, &[5.0, 15.0]);
+            pen.frect(2.0, 8.6, 13.0, 11.4, tint(pen));
+            pen.line_c(&[(2.5, 10.0), (12.0, 10.0)], pen.c);
+            pen.fcircle(12.6, 10.6, 0.5, a);
+            text_lines(pen, 14.0, 17.5, &[10.0]);
+        }
+        // Select Text with Similar Formatting: the bold words of three lines highlighted.
+        "similar" => {
+            for (y, x0, x1) in [(4.5, 2.5, 7.5), (10.0, 10.0, 15.0), (15.5, 5.0, 10.0)] {
+                text_lines(pen, 2.5, 17.5, &[y]);
+                pen.frect(x0 - 0.5, y - 1.5, x1 + 0.5, y + 1.5, tint(pen));
+                pen.p.line_segment([pen.pt(x0, y), pen.pt(x1, y)], Stroke::new(2.0 * pen.s(), pen.a));
+            }
+        }
+        _ => return false,
     }
     true
 }

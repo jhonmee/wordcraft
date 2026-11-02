@@ -1,4 +1,3 @@
-use super::language::mi_check;
 use super::{Align2, Rect, Sense, Tokens, Ui, Value, WordApp, big, group, json, small, vec2};
 
 /// Custom groups (Customize Ribbon, #379): up to three commands as large buttons, more as small
@@ -82,10 +81,12 @@ pub(crate) fn size_menu(ui: &mut Ui, app: &mut WordApp) {
         // Paper names are the industry's (Letter, A4, B5 (JIS)) and stay as they are; the
         // envelopes say what they are. Sizes in the measurement unit, written the region's
         // way (`21 cm × 29,7 cm`, #838).
+        // As in Word: a page in the paper's proportions, the name in bold over the size.
         let name = if n.starts_with("Envelope ") { tl!(n) } else { n };
         let (width, height) = (crate::options::length(*w), crate::options::length(*h));
-        let label = crate::i18n::fmt(tl!("{paper}   {width} × {height}"), &[("paper", name), ("width", &width), ("height", &height)]);
-        mi_check(ui, app, &label, current == Some(*n), "layout.size", json!({"name": n}));
+        let label = crate::menu_visuals::two_line(ui, name, &format!("{width} × {height}"));
+        let entry = PicEntry { icon: &format!("menu.page.{w:.0}x{h:.0}"), label: label.into(), checked: Some(current == Some(*n)), size: 30.0 };
+        mi_pic_sized(ui, app, entry, "layout.size", json!({"name": n}));
     }
     ui.separator();
     mi(ui, app, crate::dialogs::PAPER_LABELS.more, "ui.dialog", json!({"name": "pageSetup"}));
@@ -93,17 +94,6 @@ pub(crate) fn size_menu(ui: &mut Ui, app: &mut WordApp) {
 
 pub(crate) fn mi(ui: &mut Ui, app: &mut WordApp, label: &str, id: &str, params: Value) {
     mi_text(ui, app, tl!(label), id, params);
-}
-
-/// [`mi`] with a drawn icon before the label.
-pub(super) fn mi_icon(ui: &mut Ui, app: &mut WordApp, icon: &str, label: &str, id: &str, params: Value) {
-    let sc = crate::widgets::shortcut_text(app, id);
-    let enabled = crate::widgets::enabled(app, id);
-    let resp = ui.add_enabled_ui(enabled, |ui| crate::widgets::icon_menu_item(ui, icon, tl!(label), &sc, 200.0)).inner;
-    if resp.clicked() {
-        crate::widgets::run_from_ribbon(app, id, params);
-        ui.close();
-    }
 }
 
 /// A menu entry with a picture of what it does (`icon`, drawn [`crate::menu_visuals::PICTURE`]
@@ -115,14 +105,33 @@ pub(super) fn mi_pic(ui: &mut Ui, app: &mut WordApp, icon: &str, label: &str, ch
 
 /// [`mi_pic`] whose label is already in the interface language.
 pub(super) fn mi_pic_text(ui: &mut Ui, app: &mut WordApp, icon: &str, label: &str, checked: Option<bool>, id: &str, params: Value) {
+    mi_pic_sized(ui, app, PicEntry { icon, label: label.into(), checked, size: crate::menu_visuals::PICTURE }, id, params);
+}
+
+/// A picture entry's look: its picture (`icon`, `size` points), its label (one line already
+/// translated, or a [`crate::menu_visuals::two_line`] title and detail) and its check state.
+pub(super) struct PicEntry<'a> {
+    pub icon: &'a str,
+    pub label: egui::WidgetText,
+    pub checked: Option<bool>,
+    pub size: f32,
+}
+
+/// [`mi_pic`] with any label and picture size: two-line entries (Margins, Size), small icons
+/// (Find, Select).
+pub(super) fn mi_pic_sized(ui: &mut Ui, app: &mut WordApp, entry: PicEntry<'_>, id: &str, params: Value) {
     let sc = crate::widgets::shortcut_text(app, id);
     let enabled = crate::widgets::enabled(app, id);
-    let resp = ui.add_enabled_ui(enabled, |ui| crate::menu_visuals::picture_item(ui, icon, label, checked, crate::menu_visuals::PICTURE, &sc)).inner;
+    let PicEntry { icon, label, checked, size } = entry;
+    let resp = ui.add_enabled_ui(enabled, |ui| crate::menu_visuals::picture_item(ui, icon, label, checked, size, &sc)).inner;
     if resp.clicked() {
         crate::widgets::run_from_ribbon(app, id, params);
         ui.close();
     }
 }
+
+/// The size of the small icons of menus such as Find and Select.
+pub(super) const SMALL_PICTURE: f32 = 18.0;
 
 /// A menu entry drawn as a line `width` points thick before its label (Weight, Thickness,
 /// Picture Border), checked when `checked`.
