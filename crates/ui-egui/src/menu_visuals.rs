@@ -35,6 +35,36 @@ pub fn drawable(r: Rect) -> bool {
     r.is_finite() && r.width() > 0.0 && r.height() > 0.0
 }
 
+/// `text` laid out on one line no wider than `max_w`: at `size` points when it fits, else smaller
+/// down to `min_size`, else cut short with "…". Translations run longer than English (German,
+/// Russian, Greek…), and a tile or swatch row has a fixed width, so a label shrinks or shortens
+/// instead of spilling over its neighbours. The full text stays in the tooltip.
+pub fn fitted(p: &egui::Painter, text: &str, max_w: f32, size: f32, min_size: f32, color: Color32) -> std::sync::Arc<egui::Galley> {
+    let font = |pt: f32| regular(pt);
+    let g = p.layout_no_wrap(text.to_string(), font(size), color);
+    if g.size().x <= max_w || !max_w.is_finite() || max_w <= 0.0 {
+        return g;
+    }
+    let pt = (size * max_w / g.size().x.max(1.0)).max(min_size);
+    let g = p.layout_no_wrap(text.to_string(), font(pt), color);
+    if g.size().x <= max_w {
+        return g;
+    }
+    // Still too wide at the smallest size: drop characters from the end (whole characters,
+    // never inside one) until it fits with the ellipsis.
+    let chars: Vec<char> = text.chars().collect();
+    let mut n = chars.len();
+    while n > 1 {
+        n -= 1;
+        let cut: String = chars.iter().take(n).collect::<String>().trim_end().to_string() + "…";
+        let g = p.layout_no_wrap(cut, font(pt), color);
+        if g.size().x <= max_w {
+            return g;
+        }
+    }
+    p.layout_no_wrap("…".to_string(), font(pt), color)
+}
+
 /// The colours the menus are drawn in, taken from the app's theme.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MenuPalette {
@@ -192,13 +222,15 @@ pub fn paint_multilevel(ui: &Ui, r: Rect, pal: &MenuPalette, levels: &[(String, 
     for (i, (marker, text)) in levels.iter().enumerate() {
         let y = r.top() + pitch * (i as f32 + 1.0);
         let x = r.left() + 5.0 + i as f32 * 7.0;
-        let number = p.layout_no_wrap(marker.clone(), regular(8.5), PAGE_INK);
+        // A long number (`Article I.` in a longer language) shrinks to leave room for its text.
+        let room = r.right() - 4.0 - x;
+        let number = fitted(p, marker, room * if text.is_some() { 0.6 } else { 0.75 }, 8.5, 6.0, PAGE_INK);
         let w = number.size().x;
         clip.galley(pos2(x, y - number.size().y / 2.0), number, PAGE_INK);
         let x_text = x + w + 3.0;
         match text {
             Some(text) => {
-                let g = p.layout_no_wrap(text.clone(), regular(8.0), PAGE_LINE);
+                let g = fitted(p, text, (r.right() - 3.0 - x_text).max(1.0), 8.0, 6.0, PAGE_LINE);
                 clip.galley(pos2(x_text, y - g.size().y / 2.0), g, PAGE_LINE);
             }
             None if x_text < r.right() - 8.0 => {
@@ -219,17 +251,44 @@ pub fn paint_watermark(ui: &Ui, r: Rect, pal: &MenuPalette, text: &str) {
     let p = ui.painter();
     let grey = Color32::from_rgb(0xB4, 0xB4, 0xB4);
     let diagonal = (r.width().powi(2) + r.height().powi(2)).sqrt();
-    // The largest size that fits along the page's diagonal, with room at the corners.
-    let probe = p.layout_no_wrap(text.to_string(), semibold(10.0), grey);
-    let size = 10.0 * diagonal * 0.72 / probe.size().x.max(1.0);
-    let size = if size.is_finite() { size.clamp(5.0, 18.0) } else { 10.0 };
-    let galley = p.layout_no_wrap(text.to_string(), semibold(size), grey);
+    // The text as laid on the page: one line, or for several words two lines split at the space
+    // nearest the middle, whichever reads larger along the diagonal (`NO COPIAR`, a long
+    // `CONFIDENCIAL` in a longer language).
+    let one = text.to_string();
+    let two = text
+        .char_indices()
+        .filter(|(_, c)| *c == ' ')
+        .min_by_key(|(i, _)| (2 * *i).abs_diff(text.len()))
+        .map(|(i, _)| format!("{}\n{}", &text[..i], text[i..].trim_start()));
+    let fit = |t: &str| {
+        let probe = p.layout_no_wrap(t.to_string(), semibold(10.0), grey);
+        let by_width = 10.0 * diagonal * 0.8 / probe.size().x.max(1.0);
+        // Two lines also have to fit across the page's narrow way.
+        let by_height = 10.0 * r.width().min(r.height()) * 0.55 / probe.size().y.max(1.0);
+        let size = by_width.min(by_height);
+        if size.is_finite() { size.clamp(5.0, 18.0) } else { 10.0 }
+    };
+    let (text, size) = match two {
+        Some(two) if fit(&two) > fit(&one) * 1.15 => {
+            let size = fit(&two);
+            (two, size)
+        }
+        _ => {
+            let size = fit(&one);
+            (one, size)
+        }
+    };
+    let mut job = egui::text::LayoutJob::simple(text, semibold(size), grey, f32::INFINITY);
+    job.halign = egui::Align::Center;
+    let galley = p.layout_job(job);
     let angle = -(r.height() / r.width().max(1.0)).atan();
     // Turn about the text's middle, which sits on the page's middle.
     let half = galley.size() / 2.0;
     let (s, c) = angle.sin_cos();
     let turned = vec2(half.x * c - half.y * s, half.x * s + half.y * c);
-    p.with_clip_rect(r).add(egui::epaint::TextShape::new(r.center() - turned, galley, grey).with_angle(angle));
+    // A centred job's galley starts left of its origin by half its width.
+    let origin = r.center() - turned + vec2(half.x * c, half.x * s);
+    p.with_clip_rect(r).add(egui::epaint::TextShape::new(origin, galley, grey).with_angle(angle));
 }
 
 /// A palette's colours as a row of `side`-point swatches from the left of `r`, centred in it.
@@ -258,7 +317,9 @@ pub fn draw_sample(ui: &Ui, tex: &TextureHandle, at: egui::Pos2, color: Color32)
 pub fn theme_fonts_item(ui: &mut Ui, fonts: &mut dyn FontSamples, name: &str, heading: &str, body: &str, label: &str, selected: bool) -> Response {
     const W: f32 = 290.0;
     const H: f32 = 52.0;
-    let (r, resp) = ui.allocate_exact_size(vec2(W.max(ui.available_width()), H), Sense::click());
+    // Wide enough for the set's name in any language (the "Aa" box takes 56 points).
+    let name_w = ui.painter().layout_no_wrap(name.to_string(), regular(10.5), Color32::PLACEHOLDER).size().x;
+    let (r, resp) = ui.allocate_exact_size(vec2(W.max(56.0 + name_w + 12.0).max(ui.available_width()), H), Sense::click());
     let enabled = ui.is_enabled();
     resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, enabled, selected, label));
     let pal = MenuPalette::get(ui.ctx());
@@ -286,7 +347,10 @@ pub fn theme_fonts_item(ui: &mut Ui, fonts: &mut dyn FontSamples, name: &str, he
 
 /// Theme Colors entry: the palette's swatches, then its `name`.
 pub fn theme_colors_item(ui: &mut Ui, name: &str, colors: &[Color32], selected: bool) -> Response {
-    let (r, resp) = ui.allocate_exact_size(vec2(260.0_f32.max(ui.available_width()), 26.0), Sense::click());
+    // Wide enough for the swatches and the palette's name in any language.
+    let name_w = ui.painter().layout_no_wrap(name.to_string(), regular(12.0), Color32::PLACEHOLDER).size().x;
+    let need = 8.0 + colors.len() as f32 * 18.0 + 8.0 + name_w + 12.0;
+    let (r, resp) = ui.allocate_exact_size(vec2(260.0_f32.max(need).max(ui.available_width()), 26.0), Sense::click());
     let enabled = ui.is_enabled();
     resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, enabled, selected, name));
     let pal = MenuPalette::get(ui.ctx());
@@ -319,8 +383,11 @@ pub fn theme_tile(ui: &mut Ui, fonts: &mut dyn FontSamples, name: &str, heading:
                 ui.painter().rect_filled(b, 0.0, *c);
             }
         });
+        // The name under the tile, shrunk or shortened to the tile's width (the tooltip has it whole).
         let pal = MenuPalette::get(ui.ctx());
-        ui.add_sized(vec2(84.0, 14.0), egui::Label::new(egui::RichText::new(name).size(10.5).color(pal.text_dim)).selectable(false));
+        let (r, _) = ui.allocate_exact_size(vec2(84.0, 14.0), Sense::hover());
+        let g = fitted(ui.painter(), name, r.width(), 10.5, 8.0, pal.text_dim);
+        ui.painter().galley(pos2(r.center().x - g.size().x / 2.0, r.center().y - g.size().y / 2.0), g, pal.text_dim);
         resp
     })
     .inner

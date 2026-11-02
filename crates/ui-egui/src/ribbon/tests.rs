@@ -790,3 +790,146 @@ fn shape_and_chart_formats_leave_out_of_range_sizes_alone() {
     assert_eq!(before.0, Some((20.0, 2500.0)));
     assert_eq!(shown(a), before, "Chart Design shown, the chart untouched");
 }
+
+/// A harness drawing `menu` (a drop-down's contents) for `app`, as the ribbon's menus draw it.
+fn menu_harness(app: WordApp, menu: fn(&mut Ui, &mut WordApp)) -> egui_kittest::Harness<'static, WordApp> {
+    let mut h = egui_kittest::Harness::builder()
+        .with_size(vec2(520.0, 900.0))
+        .with_context_setup(|ctx| ctx.set_fonts(crate::theme::font_definitions(false, false)))
+        .build_ui_state(move |ui, app: &mut WordApp| menu(ui, app), app);
+    h.run_steps(3);
+    h
+}
+
+/// Clicks the entry whose name starts with `label` (picture entries carry a shortcut or size
+/// after their name), then lets the frame settle.
+fn click_entry(h: &mut egui_kittest::Harness<'static, WordApp>, label: &str) {
+    use egui_kittest::kittest::{By, Queryable};
+    let node = h
+        .query_all(By::new().predicate(move |n| n.label().is_some_and(|l| l.trim_start_matches('✓').trim_start().starts_with(label))))
+        .next()
+        .unwrap_or_else(|| panic!("an entry named {label}"));
+    node.click();
+    h.run_steps(3);
+}
+
+fn text_app(text: &str) -> WordApp {
+    WordApp::new(Session::new(wordcraft_doc::Document::from_text(text)), crate::Services::default())
+}
+
+/// The picture menus of Layout › Page Setup do what their entries say: each margins, orientation
+/// and columns entry sets that preset, which the menu then checks.
+#[test]
+fn page_setup_picture_entries_apply_their_preset() {
+    let mut h = menu_harness(text_app("Text"), margins_items);
+    for (label, preset) in [("Narrow", "narrow"), ("Moderate", "moderate"), ("Wide", "wide"), ("Office 2003", "office2003"), ("Normal", "normal")] {
+        click_entry(&mut h, label);
+        assert_eq!(wordcraft_engine::cmd::page::margins_preset_at(&h.state().session), Some(preset), "{label}");
+    }
+    let mut h = menu_harness(text_app("Text"), orientation_items);
+    click_entry(&mut h, "Landscape");
+    assert!(wordcraft_engine::cmd::page::sect(&h.state().session).landscape);
+    click_entry(&mut h, "Portrait");
+    assert!(!wordcraft_engine::cmd::page::sect(&h.state().session).landscape);
+    let mut h = menu_harness(text_app("Text"), columns_items);
+    for (label, preset) in [("Two", "two"), ("Three", "three"), ("Left", "left"), ("Right", "right"), ("One", "one")] {
+        click_entry(&mut h, label);
+        assert_eq!(wordcraft_engine::cmd::page::columns_preset_at(&h.state().session), Some(preset), "{label}");
+    }
+}
+
+/// Insert › Drop Cap's picture entries set the caret paragraph's drop cap.
+#[test]
+fn drop_cap_picture_entries_set_the_drop_cap() {
+    let mut h = menu_harness(text_app("Lanterns light the studio"), super::insert::drop_cap_items);
+    for (label, position) in [("Dropped", "dropped"), ("In margin", "margin"), ("None", "none")] {
+        click_entry(&mut h, label);
+        assert_eq!(wordcraft_engine::cmd::insert::drop_cap_state(&h.state().session).position, position, "{label}");
+    }
+}
+
+/// Design › Themes, Colors and Fonts: each tile or entry applies its own theme, palette or pair
+/// of fonts, and the menu then shows it as the current one.
+#[test]
+fn design_galleries_apply_what_they_show() {
+    use egui_kittest::kittest::{NodeT, Queryable};
+    let themes = wordcraft_engine::cmd::design::THEMES;
+    let mut h = menu_harness(text_app("Text"), super::design::themes_gallery);
+    for (name, heading, body, _) in themes.iter().rev() {
+        h.get_by_label(name).click();
+        h.run_steps(3);
+        let st = &h.state().session.doc.settings;
+        assert_eq!(st.theme_name, *name);
+        assert_eq!((st.major_font.as_str(), st.minor_font.as_str()), (*heading, *body), "{name} brings its fonts");
+        assert_eq!(h.get_by_label(name).accesskit_node().toggled(), Some(egui::accesskit::Toggled::True), "{name} is shown as current");
+    }
+    let mut h = menu_harness(text_app("Text"), super::design::theme_colors_items);
+    for (name, _, _, accents) in themes {
+        h.get_by_label(name).click();
+        h.run_steps(3);
+        assert_eq!(h.state().session.doc.settings.theme_colors.get(4), accents.first(), "{name}'s first accent");
+        assert_eq!(h.get_by_label(name).accesskit_node().toggled(), Some(egui::accesskit::Toggled::True));
+    }
+    let mut h = menu_harness(text_app("Text"), super::design::theme_fonts_items);
+    for (name, heading, body, _) in themes {
+        let label = format!("{name}: {heading} / {body}");
+        h.get_by_label(&label).click();
+        h.run_steps(3);
+        let st = &h.state().session.doc.settings;
+        assert_eq!((st.major_font.as_str(), st.minor_font.as_str()), (*heading, *body), "{label}");
+    }
+}
+
+/// Design › Watermark: each page in the gallery puts its own text on the page.
+#[test]
+fn watermark_tiles_apply_their_text() {
+    use egui_kittest::kittest::Queryable;
+    let mut h = menu_harness(text_app("Text"), super::design::watermark_gallery);
+    for w in super::design::WATERMARKS {
+        h.get_by_label(w).click();
+        h.run_steps(3);
+        let doc = serde_json::to_string(&h.state().session.doc).unwrap();
+        assert!(doc.contains(w), "{w} is the watermark");
+    }
+}
+
+/// Home › Numbering's library: each tile numbers the paragraph in its own format, and None
+/// takes the numbers off again.
+#[test]
+fn numbering_tiles_apply_their_format() {
+    use egui_kittest::kittest::Queryable;
+    let numbered = |h: &egui_kittest::Harness<'static, WordApp>| {
+        let s = &h.state().session;
+        let p = s.doc.para_at(&s.sel.focus).map(|p| s.doc.styles.resolve_para(&p.props));
+        wordcraft_engine::cmd::para::list_buttons(&s.doc, p.and_then(|r| r.numbering)).numbering
+    };
+    let mut h = menu_harness(text_app("Lanterns"), super::home::numbering_library);
+    for ((label, kind), format) in
+        super::home::NUMBERING_LIBRARY.iter().zip(["decimal", "decimal", "upperRoman", "upperLetter", "lowerLetter", "lowerRoman"])
+    {
+        h.get_by_label(label).click();
+        h.run_steps(3);
+        assert!(numbered(&h), "{label} numbers the paragraph");
+        let numbering = serde_json::to_string(&h.state().session.doc.numbering).unwrap();
+        assert!(numbering.contains(format), "{label} ({kind}) is {format}");
+        h.get_by_label("None").click();
+        h.run_steps(3);
+        assert!(!numbered(&h), "None takes {label}'s numbers off");
+    }
+}
+
+/// Home › Multilevel List's library: every tile applies a list (one undo step each).
+#[test]
+fn multilevel_tiles_apply_a_list() {
+    use egui_kittest::kittest::{By, NodeT, Queryable};
+    let mut h = menu_harness(text_app("Lanterns"), super::home::multilevel_library);
+    let names: Vec<String> = h.query_all(By::new().role(egui::accesskit::Role::Button)).filter_map(|n| n.accesskit_node().label()).collect();
+    assert_eq!(names.len(), 6, "six lists: {names:?}");
+    for name in &names {
+        let before = h.state().session.undo_depth();
+        h.get_by_label(name).click();
+        h.run_steps(3);
+        assert_eq!(h.state().session.undo_depth(), before + 1, "{name} applies its list");
+        assert!(h.state_mut().session.undo());
+    }
+}

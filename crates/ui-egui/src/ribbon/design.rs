@@ -107,7 +107,7 @@ pub(super) fn design(app: &mut WordApp, ui: &mut Ui) {
 
 /// Design › Themes: a tile per theme, "Aa" in its heading font over its colours; the
 /// document's theme is selected.
-fn themes_gallery(ui: &mut Ui, app: &mut WordApp) {
+pub(super) fn themes_gallery(ui: &mut Ui, app: &mut WordApp) {
     let current = app.session.doc.settings.theme_name.clone();
     let enabled = crate::widgets::enabled(app, "design.theme");
     tile_rows(ui, wordcraft_engine::cmd::design::THEMES, 3, |ui, (name, heading, _, accents)| {
@@ -124,7 +124,7 @@ fn themes_gallery(ui: &mut Ui, app: &mut WordApp) {
 
 /// Design › Colors: each palette as a row of swatches and its name; the palette whose first
 /// accent the document uses is selected.
-fn theme_colors_items(ui: &mut Ui, app: &mut WordApp) {
+pub(super) fn theme_colors_items(ui: &mut Ui, app: &mut WordApp) {
     let accent = app.session.doc.settings.theme_colors.get(4).copied();
     let enabled = crate::widgets::enabled(app, "design.themeColors");
     for (name, _, _, accents) in wordcraft_engine::cmd::design::THEMES {
@@ -140,7 +140,7 @@ fn theme_colors_items(ui: &mut Ui, app: &mut WordApp) {
 
 /// Design › Fonts: each pair as "Aa" in its heading font and the two fonts named in their own
 /// faces; the document's pair is selected. Each entry reads as `Name: Heading / Body`.
-fn theme_fonts_items(ui: &mut Ui, app: &mut WordApp) {
+pub(super) fn theme_fonts_items(ui: &mut Ui, app: &mut WordApp) {
     let settings = &app.session.doc.settings;
     let (major, minor) = (settings.major_font.clone(), settings.minor_font.clone());
     let enabled = crate::widgets::enabled(app, "design.themeFonts");
@@ -158,19 +158,20 @@ fn theme_fonts_items(ui: &mut Ui, app: &mut WordApp) {
 /// The watermarks Design › Watermark offers ready-made.
 pub(super) const WATERMARKS: [&str; 6] = ["DRAFT", "CONFIDENTIAL", "DO NOT COPY", "SAMPLE", "ASAP", "URGENT"];
 
-/// Design › Watermark's gallery: a page with each watermark laid across it.
-fn watermark_gallery(ui: &mut Ui, app: &mut WordApp) {
+/// Design › Watermark's gallery: a page with each watermark laid across it, in the interface
+/// language; a click puts that same text on the page (`BORRADOR` in Spanish, as the tile shows).
+pub(super) fn watermark_gallery(ui: &mut Ui, app: &mut WordApp) {
     let enabled = crate::widgets::enabled(app, "design.watermark");
     tile_rows(ui, &WATERMARKS, 3, |ui, w| {
         let text = tl!(w);
         let resp = ui
             .add_enabled_ui(enabled, |ui| {
-                crate::menu_visuals::tile(ui, vec2(72.0, 92.0), text, false, |ui, r, pal| crate::menu_visuals::paint_watermark(ui, r, pal, text))
+                crate::menu_visuals::tile(ui, vec2(78.0, 100.0), text, false, |ui, r, pal| crate::menu_visuals::paint_watermark(ui, r, pal, text))
             })
             .inner;
         let clicked = resp.clicked();
         if clicked {
-            crate::widgets::run_from_ribbon(app, "design.watermark", json!({"text": w}));
+            crate::widgets::run_from_ribbon(app, "design.watermark", json!({"text": text}));
         }
         clicked
     });

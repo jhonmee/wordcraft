@@ -1,4 +1,4 @@
-use super::common::{mi, mi_pic, stack, tile_rows};
+use super::common::{mi, mi_pic, mi_text, stack, tile_rows};
 use super::underline::underline_menu;
 use super::{Remember, Stroke, Target, Tokens, Ui, Value, WordApp, big, group, json, menu_button, small, split, vec2};
 
@@ -222,7 +222,9 @@ pub(super) fn home(app: &mut WordApp, ui: &mut Ui) {
                         mi(ui, app, "Define New Multilevel List…", "list.define", json!({}));
                         ui.separator();
                         for lv in 0..5u64 {
-                            mi(ui, app, &format!("Change to Level {}", lv + 1), "para.listLevel", json!({"level": lv}));
+                            // The template is translated, then numbered (`Auf Ebene 2 ändern`).
+                            let label = crate::i18n::fmt(tl!("Change to Level {n}"), &[("n", &(lv + 1).to_string())]);
+                            mi_text(ui, app, &label, "para.listLevel", json!({"level": lv}));
                         }
                     },
                 );
@@ -255,11 +257,13 @@ pub(super) fn home(app: &mut WordApp, ui: &mut Ui) {
                             wordcraft_doc::props::LineSpacing::Multiple(m) => Some(m),
                             _ => None,
                         });
+                        // Written with the region's decimal separator (`1,15`), as Word shows them.
+                        let decimal = crate::options::decimal().to_string();
                         for v in [1.0, 1.15, 1.5, 2.0, 2.5, 3.0] {
                             super::language::mi_check(
                                 ui,
                                 app,
-                                &format!("{v}"),
+                                &format!("{v}").replace('.', &decimal),
                                 current.is_some_and(|c| (c - v).abs() < 0.01),
                                 "para.lineSpacing",
                                 json!({"value": v}),
@@ -353,7 +357,7 @@ pub(super) const NUMBERING_LIBRARY: [(&str, &str); 6] = [
 
 /// Home › Numbering's Numbering Library: None, then a tile per format showing three numbered
 /// lines, as Word's library does.
-fn numbering_library(ui: &mut Ui, app: &mut WordApp) {
+pub(super) fn numbering_library(ui: &mut Ui, app: &mut WordApp) {
     ui.label(egui::RichText::new(tl!("Numbering Library")).small().weak());
     let enabled = crate::widgets::enabled(app, "para.numbering");
     let mut tiles: Vec<(&str, Option<&str>)> = vec![("None", None)];
@@ -368,9 +372,12 @@ fn numbering_library(ui: &mut Ui, app: &mut WordApp) {
                         let markers: Vec<String> = label.split(' ').map(|m| tl!(m).to_string()).collect();
                         crate::menu_visuals::paint_numbering(ui, r, pal, &markers);
                     }
+                    // "None" in the interface language, shrunk to the tile when it runs long.
                     None => {
                         crate::menu_visuals::page(ui, r, pal);
-                        ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, name, crate::theme::regular(11.0), crate::menu_visuals::PAGE_INK);
+                        let ink = crate::menu_visuals::PAGE_INK;
+                        let g = crate::menu_visuals::fitted(ui.painter(), name, r.width() - 8.0, 11.0, 7.0, ink);
+                        ui.painter().galley(r.center() - g.size() / 2.0, g, ink);
                     }
                 })
             })
@@ -437,7 +444,7 @@ impl MultilevelPreset {
 }
 
 /// Home › Multilevel List's List Library: a tile per list showing its first three levels.
-fn multilevel_library(ui: &mut Ui, app: &mut WordApp) {
+pub(super) fn multilevel_library(ui: &mut Ui, app: &mut WordApp) {
     ui.label(egui::RichText::new(tl!("List Library")).small().weak());
     tile_rows(ui, &MULTILEVEL_LIBRARY, 3, |ui, preset| {
         let enabled = crate::widgets::enabled(app, preset.id);

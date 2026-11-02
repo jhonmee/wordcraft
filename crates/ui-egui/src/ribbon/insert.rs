@@ -19,7 +19,9 @@ const fn line(label: &'static str, kind: &'static str, icon: &'static str, arrow
     ShapeTile { label, kind, icon, arrow: Some(arrow) }
 }
 
-/// Insert › Shapes, by category as Word groups them: every shape WordCraft draws.
+/// Insert › Shapes, by category as Word groups them: every shape WordCraft draws. Names and
+/// headings are looked up in the `shapes` context, so a language whose plain word for "Lines"
+/// means lines of text, or "Diamond" the gem, says what the gallery shows.
 pub(super) const SHAPE_CATEGORIES: [(&str, &[ShapeTile]); 6] = [
     (
         "Lines",
@@ -70,12 +72,12 @@ pub(super) fn shape_gallery(ui: &mut Ui, app: &mut WordApp) {
     ui.add_enabled_ui(enabled, |ui| {
         ui.spacing_mut().item_spacing = vec2(2.0, 2.0);
         for (category, tiles) in SHAPE_CATEGORIES {
-            ui.label(egui::RichText::new(crate::tl!(category)).small().strong());
+            ui.label(egui::RichText::new(crate::i18n::tc("shapes", category)).small().strong());
             for row in tiles.chunks(SHAPE_TILES_PER_ROW) {
                 ui.horizontal(|ui| {
                     for tile in row {
                         let (r, resp) = ui.allocate_exact_size(vec2(30.0, 30.0), Sense::click());
-                        let name = crate::tl!(tile.label);
+                        let name = crate::i18n::tc("shapes", tile.label);
                         resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), name));
                         crate::widgets::bg(ui, r, &resp, false, &t);
                         icons::paint(ui.painter(), Rect::from_center_size(r.center(), vec2(22.0, 22.0)), tile.icon, t.icon, t.accent);
@@ -277,7 +279,7 @@ pub(super) fn insert(app: &mut WordApp, ui: &mut Ui) {
 
 /// Insert › Drop Cap's menu (#2601): None, Dropped and In margin (the current one checked),
 /// then the Drop Cap dialog.
-fn drop_cap_items(ui: &mut Ui, app: &mut WordApp) {
+pub(super) fn drop_cap_items(ui: &mut Ui, app: &mut WordApp) {
     let current = wordcraft_engine::cmd::insert::drop_cap_state(&app.session).position;
     for (label, v, icon) in
         [("None", "none", "menu.dropCap.none"), ("Dropped", "dropped", "menu.dropCap.dropped"), ("In margin", "margin", "menu.dropCap.margin")]

@@ -25,7 +25,9 @@ pub(super) fn references(app: &mut WordApp, ui: &mut Ui) {
                 |ui, app| {
                     mi(ui, app, "Do Not Show in TOC", "references.addText", json!({"level": 0}));
                     for l in 1..=3u64 {
-                        mi(ui, app, &format!("Level {l}"), "references.addText", json!({"level": l}));
+                        // The template is translated, then numbered (`Nivel 2`).
+                        let label = crate::i18n::fmt(tl!("Level {n}"), &[("n", &l.to_string())]);
+                        mi_text(ui, app, &label, "references.addText", json!({"level": l}));
                     }
                 },
             );
